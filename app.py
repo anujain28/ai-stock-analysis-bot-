@@ -18,7 +18,7 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 import ta
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Dict, List, Optional
 import pytz
 import requests
@@ -88,7 +88,7 @@ st.markdown("""
         background-color: #ffffff;
         color: #111827;
     }
-    /* Hide sidebar content visually but keep it functional */
+    /* Hide sidebar visually but keep it functional */
     [data-testid="stSidebar"] {
         width: 0 !important;
         min-width: 0 !important;
@@ -134,9 +134,6 @@ st.markdown("""
         gap: 8px;
         margin: 10px 0 6px 0;
     }
-    .top-nav button[kind="secondary"] {
-        border-radius: 999px !important;
-    }
     @media (max-width: 768px) {
         .top-nav {
             justify-content: flex-start;
@@ -179,7 +176,7 @@ st.markdown("""
         border: 1px solid rgba(148,163,184,0.4);
     }
 </style>
-""", unsafe_allow_html=True)  # responsive tweaks + top nav idea [web:346][web:353]
+""", unsafe_allow_html=True)  # mobile/desktop friendly tweaks [web:326][web:363]
 
 IST = pytz.timezone('Asia/Kolkata')
 
@@ -584,29 +581,29 @@ def run_analysis():
     for p in ['BTST', 'Intraday', 'Weekly', 'Monthly']:
         st.session_state['recommendations'][p] = analyze_multiple_stocks(STOCK_UNIVERSE, p, max_results=20)
 
-# ========= BACKGROUND AUTO SCAN FRAGMENT (TRUE TIMER) =========
+# ========= AUTO-SCAN (TIME CHECK, NO FRAGMENT) =========
 def market_hours_window(dt: datetime):
     start = dt.replace(hour=9, minute=10, second=0, microsecond=0)
     end = dt.replace(hour=15, minute=40, second=0, microsecond=0)
     return start <= dt <= end
 
-@st.experimental_fragment(run_every="20m")  # auto-rerun every 20 minutes [web:355]
-def auto_scan_fragment():
+def auto_scan_if_due():
     now = datetime.now(IST)
     last = st.session_state.get('last_auto_scan')
-    if market_hours_window(now):
-        should_run = False
-        if last is None:
-            should_run = True
-        else:
-            try:
-                if (now - last).total_seconds() >= 20 * 60:
-                    should_run = True
-            except Exception:
+    if not market_hours_window(now):
+        return
+    should_run = False
+    if last is None:
+        should_run = True
+    else:
+        try:
+            if (now - last).total_seconds() >= 20 * 60:
                 should_run = True
-        if should_run:
-            run_analysis()
-            st.write(f"🕒 Auto-scan executed at {now.strftime('%H:%M:%S')} IST")
+        except Exception:
+            should_run = True
+    if should_run:
+        run_analysis()
+        st.caption(f"🕒 Auto-scan executed at {now.strftime('%H:%M:%S')} IST")
 
 # ========= TOP STOCKS AGGREGATION (NO DUPLICATES) =========
 def get_top_stocks(limit: int = 10):
@@ -632,7 +629,7 @@ def get_top_stocks(limit: int = 10):
         return []
     return pd.DataFrame(unique_rows).to_dict(orient="records")
 
-# ========= GROWW / Groww ANALYSIS =========
+# ========= Groww ANALYSIS =========
 def analyze_groww_portfolio(df: pd.DataFrame):
     cols = {c.lower(): c for c in df.columns}
     required = [
@@ -719,11 +716,13 @@ NAV_PAGES = [
 ]
 
 def top_nav_bar():
+    st.markdown("<div class='top-nav'>", unsafe_allow_html=True)
     cols = st.columns(len(NAV_PAGES))
     for i, label in enumerate(NAV_PAGES):
         with cols[i]:
             if st.button(label, key=f"nav_{label}", use_container_width=True):
                 st.session_state['current_page'] = label
+    st.markdown("</div>", unsafe_allow_html=True)
 
 # ========= MAIN UI =========
 def main():
@@ -735,8 +734,8 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
-    # Start background fragment (auto scan)
-    auto_scan_fragment()
+    # Time-based auto scan (no fragment, runs on each script run)
+    auto_scan_if_due()
 
     top_nav_bar()
 
@@ -822,7 +821,7 @@ def main():
     elif page == "⚙️ Configuration":
         st.markdown("### ⚙️ App Configuration")
 
-        # Groww is above; now Dhan after Groww in the overall journey
+        # Dhan after Groww (in overall flow)
         with st.expander("🤝 Dhan (Connect + Portfolio)", expanded=True):
             dhan_store = localS.getItem("dhan_config") or {}
             if dhan_store:
