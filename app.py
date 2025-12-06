@@ -753,7 +753,7 @@ def sidebar_nav():
 def main():
     st.markdown("""
     <div class='main-header'>
-        <h1>🤖 AI MultiAlgo Bot</h1>
+        <h1>🤖 AI Enabled Algorithms </h1>
         <p>Multi-timeframe scanner • 📈 NIFTY 200 • 🤝 Dhan • 📊 Groww</p>
         <div class="status-badge">Live • IST</div>
     </div>
