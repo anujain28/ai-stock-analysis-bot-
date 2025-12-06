@@ -257,7 +257,13 @@ if 'last_analysis_time' not in st.session_state:
 if 'last_auto_scan' not in st.session_state:
     st.session_state['last_auto_scan'] = None
 if 'recommendations' not in st.session_state:
-    st.session_state['recommendations'] = {'BTST': [], 'Intraday': [], 'Weekly', 'Monthly': []}
+    st.session_state['recommendations'] = {
+        'BTST': [],
+        'Intraday': [],
+        'Weekly': [],
+        'Monthly': []
+    }
+
 if 'current_page' not in st.session_state:
     st.session_state['current_page'] = "🔥 Top Stocks"
 
