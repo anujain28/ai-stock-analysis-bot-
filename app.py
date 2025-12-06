@@ -73,7 +73,7 @@ def save_config_from_state():
 st.set_page_config(
     page_title="🤖 AI Stock Analysis Bot",
     page_icon="📈",
-    layout="normal",
+    layout="wide",
     initial_sidebar_state="expanded"
 )
 
