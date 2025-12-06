@@ -85,7 +85,7 @@ st.markdown("""
         --bg-header-to: #0ea5e9;     /* sky-500 */
         --bg-card: #ffffff;          /* slate-900 */
         --border-card: #1e293b;      /* slate-800 */
-        --accent: #22c55e;           /* green-500 */
+        --accent: #ffffff;           /* green-500 */
         --accent-soft: #bbf7d0;      /* green-100 */
         --nav-bg: #e5e7eb;           /* gray-200 */
         --nav-bg-hover: #4f46e5;     /* indigo-600 */
