@@ -207,11 +207,11 @@ st.markdown("""
         border: 1px solid var(--border-card);
         box-shadow: 0 4px 12px rgba(15,23,42,0.18);
         margin-bottom: 10px;
-        color: #111827;
+        color: #ffffff;
     }
     .metric-card h3 {
         font-size: 0.95rem;
-        color: #0f172a;
+        color: #ffffff;
         margin-bottom: 4px;
     }
     .metric-card .value {
