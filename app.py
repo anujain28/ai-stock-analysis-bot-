@@ -618,4 +618,25 @@ PAGES = [
     "⚙️ Configuration",
 ]
 
-def sidebar_nav
+def sidebar_nav():  # <-- add parentheses here to fix SyntaxError
+    with st.sidebar:
+        st.markdown("<div class='side-section'><h4>📂 Navigation</h4>", unsafe_allow_html=True)
+        page = st.radio(
+            "Go to",
+            PAGES,
+            index=0,
+            label_visibility="collapsed",
+        )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        # Dhan portfolio quick view in sidebar
+        with st.expander("Dhan Portfolio (Quick View)", expanded=False):
+            df_port, total_pnl = format_dhan_portfolio_table()
+            if df_port is None or df_port.empty:
+                st.caption("No Dhan holdings/positions yet or not connected.")
+            else:
+                st.dataframe(df_port, use_container_width=True, hide_index=True)
+                st.caption(f"Total P&L: ₹{total_pnl:,.2f}")
+
+    return page
+
