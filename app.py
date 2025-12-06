@@ -777,7 +777,7 @@ def main():
     st.markdown("---")
     page = st.session_state['current_page']
     if page == "🔥 Top Stocks":
-        st.subheader("🔥 Top Stocks (up to 20)")
+        st.subheader("🔥 AI Cherry Picked Stocks ")
         top_recs = get_top_stocks(limit=20)
         render_reco_cards(top_recs, "Top")
 
