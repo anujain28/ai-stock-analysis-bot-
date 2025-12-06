@@ -634,7 +634,7 @@ def get_index_quote(symbol: str):
 # ========= MAIN UI =========
 def main():
     # 1-second auto-refresh for sidebar market section
-    st_autorefresh = st.experimental_rerun  # alias; Streamlit will rerun on each load
+    
     st.sidebar.empty()  # ensure sidebar gets redrawn each run
 
     st.markdown("""
