@@ -8,6 +8,7 @@ requests
 dhanhq
 NorenRestApiPy
 streamlit-local-storage
+streamlit-autorefresh
 
 
 
