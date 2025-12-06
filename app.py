@@ -74,7 +74,7 @@ st.set_page_config(
     page_title="🤖 AI Stock Analysis Bot",
     page_icon="📈",
     layout="wide",
-    initial_sidebar_state="collapsed"
+    initial_sidebar_state="expanded"
 )
 
 st.markdown("""
@@ -83,16 +83,15 @@ st.markdown("""
         --bg-main: #f3f4f6;          /* light gray */
         --bg-header-from: #4f46e5;   /* indigo-600 */
         --bg-header-to: #0ea5e9;     /* sky-500 */
-        --bg-card: #ffffff;          /* slate-900 */
+        --bg-card: #ffffff;          /* white card */
         --border-card: #1e293b;      /* slate-800 */
-        --accent: #ffffff;           /* green-500 */
+        --accent: #ffffff;
         --accent-soft: #bbf7d0;      /* green-100 */
         --nav-bg: #e5e7eb;           /* gray-200 */
         --nav-bg-hover: #4f46e5;     /* indigo-600 */
         --nav-bg-active: #4338ca;    /* indigo-700 */
         --nav-text: #111827;         /* gray-900 */
-        --nav-text-active: #0f172a;  /* white */
-    }
+        --nav-text-active: #0f172a;  /* dark slate */
     }
 
     .stApp {
@@ -103,17 +102,6 @@ st.markdown("""
     body {
         background-color: var(--bg-main);
         color: #111827;
-    }
-
-    /* Hide sidebar visually but keep it functional */
-    [data-testid="stSidebar"] {
-        width: 0 !important;
-        min-width: 0 !important;
-        padding: 0 !important;
-        overflow: hidden !important;
-    }
-    [data-testid="stSidebarCollapsedControl"] {
-        display: none;
     }
 
     .main-header {
@@ -147,72 +135,18 @@ st.markdown("""
         margin-top: 6px;
     }
 
-    .top-nav {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin: 10px 0 8px 0;
-    }
-
-    /* Desktop vs mobile nav containers */
-    .top-nav-desktop { display: flex; }
-    .top-nav-mobile { display: none; }
-
-    @media (max-width: 768px) {
-        .top-nav-desktop { display: none !important; }
-        .top-nav-mobile {
-            display: flex !important;
-            justify-content: flex-start;
-        }
-    }
-
-    /* Top navigation buttons (desktop) */
-    .top-nav-desktop .stButton > button {
-        background-color: var(--nav-bg) !important;
-        color: var(--nav-text) !important;
-        border-radius: 999px !important;
-        border: 1px solid #d1d5db !important;
-        font-size: 0.83rem !important;
-        padding: 0.35rem 0.75rem !important;
-        box-shadow: none !important;
-    }
-    .top-nav-desktop .stButton > button:hover {
-        background-color: var(--nav-bg-hover) !important;
-        color: #ffffff !important;
-        border-color: var(--nav-bg-hover) !important;
-    }
-    .top-nav-desktop .stButton > button:focus,
-    .top-nav-desktop .stButton > button:active {
-        background-color: var(--nav-bg-active) !important;
-        color: #ffffff !important;
-        border-color: var(--nav-bg-active) !important;
-        box-shadow: 0 0 0 1px rgba(79,70,229,0.5) !important;
-    }
-
-    /* Mobile single button style */
-    .top-nav-mobile .mobile-top-btn {
-        background-color: var(--nav-bg-hover);
-        color: #ffffff;
-        border-radius: 999px;
-        border: 1px solid var(--nav-bg-hover);
-        font-size: 0.9rem;
-        padding: 0.4rem 0.9rem;
-        cursor: pointer;
-    }
-
     .metric-card {
-    padding: 12px 12px;
-    border-radius: 14px;
-    background: var(--bg-card);
-    border: 1px solid #e5e7eb;    /* <-- change this color */
-    box-shadow: 0 4px 12px rgba(15,23,42,0.18);
-    margin-bottom: 10px;
-    color: #111827;
-}
-
+        padding: 12px 12px;
+        border-radius: 14px;
+        background: var(--bg-card);
+        border: 1px solid #e5e7eb;
+        box-shadow: 0 4px 12px rgba(15,23,42,0.18);
+        margin-bottom: 10px;
+        color: #111827;
+    }
     .metric-card h3 {
         font-size: 0.95rem;
-        color: #e5e7eb;
+        color: #0f172a;
         margin-bottom: 4px;
     }
     .metric-card .value {
@@ -231,23 +165,21 @@ st.markdown("""
         gap: 6px;
         margin-top: 4px;
     }
-        .chip {
+    .chip {
         padding: 2px 8px;
         border-radius: 999px;
         font-size: 0.7rem;
-        background: #ffffff;                 /* white chip */
-        border: 1px solid #d1d5db;          /* light gray border */
-        color: #111827;                     /* dark text */
+        background: #ffffff;
+        border: 1px solid #d1d5db;
+        color: #111827;
     }
 
-
-    /* Tables & dataframe tweaks */
     .stDataFrame, .stTable {
         border-radius: 10px;
         overflow: hidden;
     }
 </style>
-""", unsafe_allow_html=True)  # responsive nav + your palette [web:404][web:406]
+""", unsafe_allow_html=True)  # sidebar nav + your palette [web:326][web:333]
 
 IST = pytz.timezone('Asia/Kolkata')
 
@@ -266,7 +198,6 @@ if 'recommendations' not in st.session_state:
         'Weekly': [],
         'Monthly': []
     }
-
 if 'current_page' not in st.session_state:
     st.session_state['current_page'] = "🔥 Top Stocks"
 
@@ -658,7 +589,7 @@ def run_analysis():
     for p in ['BTST', 'Intraday', 'Weekly', 'Monthly']:
         st.session_state['recommendations'][p] = analyze_multiple_stocks(STOCK_UNIVERSE, p, max_results=20)
 
-# ========= AUTO-SCAN (TIME CHECK, NO FRAGMENT) =========
+# ========= AUTO-SCAN (TIME CHECK) =========
 def market_hours_window(dt: datetime):
     start = dt.replace(hour=9, minute=10, second=0, microsecond=0)
     end = dt.replace(hour=15, minute=40, second=0, microsecond=0)
@@ -781,7 +712,7 @@ def render_reco_cards(recs: List[Dict], label: str):
             st.markdown(f"<div class='sub'>🧠 Reason: {reason}</div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-# ========= TOP NAVIGATION =========
+# ========= SIDEBAR NAV =========
 NAV_PAGES = [
     "🔥 Top Stocks",
     "🌙 BTST",
@@ -793,22 +724,16 @@ NAV_PAGES = [
     "⚙️ Configuration",
 ]
 
-def top_nav_bar():
-    # Desktop nav (all tabs)
-    st.markdown("<div class='top-nav top-nav-desktop'>", unsafe_allow_html=True)
-    cols = st.columns(len(NAV_PAGES))
-    for i, label in enumerate(NAV_PAGES):
-        with cols[i]:
-            if st.button(label, key=f"nav_{label}", use_container_width=True):
-                st.session_state['current_page'] = label
-    st.markdown("</div>", unsafe_allow_html=True)
-
-    # Mobile nav (single Top button – all other tabs are hidden via CSS)
-    st.markdown("""
-    <div class='top-nav top-nav-mobile'>
-        <button class='mobile-top-btn'>🔥 Top 20 Stocks</button>
-    </div>
-    """, unsafe_allow_html=True)
+def sidebar_nav():
+    with st.sidebar:
+        st.markdown("### 📂 Views")
+        page = st.radio(
+            "Navigation",
+            NAV_PAGES,
+            index=NAV_PAGES.index(st.session_state.get("current_page", "🔥 Top Stocks")),
+            label_visibility="collapsed",
+        )
+        st.session_state["current_page"] = page
 
 # ========= MAIN UI =========
 def main():
@@ -820,10 +745,10 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
+    sidebar_nav()
+
     # Time-based auto scan (runs whenever script reruns)
     auto_scan_if_due()
-
-    top_nav_bar()
 
     c1, c2, c3 = st.columns([3, 1.2, 1])
     with c1:
@@ -838,7 +763,6 @@ def main():
     if st.session_state['last_analysis_time']:
         st.caption(f"🕒 Last Full Scan: {st.session_state['last_analysis_time'].strftime('%d-%m-%Y %I:%M %p')}")
 
-    # Mobile hint
     st.info("On mobile you can view Top 20 stocks. For other views (BTST, Intraday, Weekly, Monthly, Groww, Dhan, Configuration), please open this dashboard on a laptop or desktop.", icon="📱")
 
     st.markdown("---")
@@ -991,4 +915,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
