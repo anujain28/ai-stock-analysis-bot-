@@ -18,8 +18,7 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 import ta
-from datetime import datetime
-import time
+from datetime import datetime, time as dtime
 from typing import Dict, List, Optional
 import pytz
 import requests
@@ -151,7 +150,7 @@ st.markdown("""
         background: radial-gradient(circle at top, #4c1d95 0, #581c87 40%, #2e1065 100%);
     }
 </style>
-""", unsafe_allow_html=True)  # violet sidebar background [web:219][web:301]
+""", unsafe_allow_html=True)  # violet sidebar [web:219][web:301]
 
 IST = pytz.timezone('Asia/Kolkata')
 
@@ -187,7 +186,7 @@ for key, default in [
     if key not in st.session_state:
         st.session_state[key] = default
 
-# ========= NIFTY 200 FROM CSV (HIDDEN UNIVERSE) =========
+# ========= NIFTY 200 FROM CSV =========
 DATA_DIR = Path(__file__).parent / "data"
 NIFTY200_CSV = DATA_DIR / "nifty200_yahoo.csv"
 MASTER_NIFTY200 = DATA_DIR / "ind_nifty200list.csv"
@@ -543,7 +542,6 @@ def analyze_multiple_stocks(tickers: List[str], period_type: str, max_results: i
         res = analyze_stock(tck, period_type)
         if res:
             out.append(res)
-        time.sleep(0.02)
     bar.empty()
     txt.empty()
     return sorted(out, key=lambda x: x['score'], reverse=True)[:max_results]
@@ -552,43 +550,80 @@ def run_analysis():
     now = datetime.now(IST)
     st.session_state['last_analysis_time'] = now
     st.session_state['last_auto_scan'] = now
-    new_recs = {}
     for p in ['BTST', 'Intraday', 'Weekly', 'Monthly']:
-        new_recs[p] = analyze_multiple_stocks(STOCK_UNIVERSE, p, max_results=20)
-        st.session_state['recommendations'][p] = new_recs[p]
-    return new_recs
+        st.session_state['recommendations'][p] = analyze_multiple_stocks(STOCK_UNIVERSE, p, max_results=20)
 
-# ========= BACKGROUND AUTO SCAN =========
+# ========= BACKGROUND AUTO SCAN (20 MIN, MARKET HOURS) =========
+def market_hours_window():
+    # Use 9:10–15:40 IST envelope around regular 9:15–15:30 trading [web:308][web:313]
+    now = datetime.now(IST)
+    start = now.replace(hour=9, minute=10, second=0, microsecond=0)
+    end = now.replace(hour=15, minute=40, second=0, microsecond=0)
+    return start <= now <= end
+
 def maybe_run_auto_scan():
     now = datetime.now(IST)
     last = st.session_state.get('last_auto_scan')
     should_run = False
-    if last is None:
-        should_run = True
-    else:
-        try:
-            if (now - last).total_seconds() >= 30 * 60:
-                should_run = True
-        except Exception:
+    if market_hours_window():
+        if last is None:
             should_run = True
+        else:
+            try:
+                if (now - last).total_seconds() >= 20 * 60:
+                    should_run = True
+            except Exception:
+                should_run = True
     if should_run:
         run_analysis()
 
-# ========= SIDEBAR: BTST FLASH CARDS =========
+# ========= TOP STOCKS AGGREGATION (NO DUPLICATES) =========
+def get_top_stocks(limit: int = 10):
+    all_recs = []
+    for period in ['BTST', 'Intraday', 'Weekly', 'Monthly']:
+        for r in st.session_state['recommendations'].get(period, []):
+            rec = dict(r)
+            rec['period'] = period
+            all_recs.append(rec)
+    if not all_recs:
+        return []
+
+    df_all = pd.DataFrame(all_recs).sort_values("score", ascending=False)
+
+    # Remove duplicate scrips by ticker, keep best score [web:311][web:314]
+    seen = set()
+    unique_rows = []
+    for _, row in df_all.iterrows():
+        t = row.get('ticker')
+        if t not in seen:
+            seen.add(t)
+            unique_rows.append(row)
+        if len(unique_rows) >= limit:
+            break
+    if not unique_rows:
+        return []
+    return pd.DataFrame(unique_rows).to_dict(orient="records")
+
+# ========= SIDEBAR: BTST FLASH CARDS (NO REPEAT) =========
 def get_btst_top_for_sidebar(n: int = 5):
     btst_recs = st.session_state['recommendations'].get('BTST', [])
     if not btst_recs:
         return []
     df = pd.DataFrame(btst_recs).sort_values("score", ascending=False)
-    return df.head(n).to_dict(orient="records")
+    # unique tickers only
+    seen = set()
+    rows = []
+    for _, r in df.iterrows():
+        t = r.get('ticker')
+        if t not in seen:
+            seen.add(t)
+            rows.append(r)
+        if len(rows) >= n:
+            break
+    return pd.DataFrame(rows).to_dict(orient="records")
 
 # ========= GROWW PORTFOLIO ANALYSIS =========
 def analyze_groww_portfolio(df: pd.DataFrame):
-    """
-    Expected columns:
-    Stock Name, ISIN, Quantity, Average buy price per share,
-    Total Investment, Total CMP, TOTAL P&L
-    """
     cols = {c.lower(): c for c in df.columns}
     required = [
         "stock name",
@@ -651,7 +686,8 @@ def main():
                 st.markdown(f"<h3>{rec.get('ticker','')}</h3>", unsafe_allow_html=True)
                 st.markdown(f"<div class='value'>CMP: ₹{rec.get('price',0):.2f}</div>", unsafe_allow_html=True)
                 if tgt is not None and not np.isnan(tgt):
-                    st.markdown(f"<div class='sub'>Target: ₹{tgt:.2f}</div>", unsafe_allow_html=True)
+                    diff = tgt - rec.get('price', 0)
+                    st.markdown(f"<div class='sub'>Target: ₹{tgt:.2f} • Profit: ₹{diff:.2f}</div>", unsafe_allow_html=True)
                 st.markdown(f"<div class='sub'>ETA: {rec.get('timeframe','')} • BTST</div>", unsafe_allow_html=True)
                 st.markdown("</div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
@@ -672,12 +708,43 @@ def main():
 
     st.markdown("---")
 
-    # Tabs: BTST / Intraday / Weekly / Monthly / GROWW / Config (last)
-    tab_btst, tab_intraday, tab_weekly, tab_monthly, tab_groww, tab_config = st.tabs(
-        ["🌙 BTST", "⚡ Intraday", "📆 Weekly", "📅 Monthly", "📊 GROWW Stocks", "⚙️ Configuration"]
+    # Tabs: Top Stocks / BTST / Intraday / Weekly / Monthly / GROWW / Config(last)
+    tab_top, tab_btst, tab_intraday, tab_weekly, tab_monthly, tab_groww, tab_config = st.tabs(
+        ["🔥 Top Stocks", "🌙 BTST", "⚡ Intraday", "📆 Weekly", "📅 Monthly", "📊 GROWW Stocks", "⚙️ Configuration"]
     )
 
-    # BTST
+    # Top Stocks tab – 10 best unique scrips with flash cards
+    with tab_top:
+        st.subheader("Top 10 Stocks Across All Setups")
+        top_recs = get_top_stocks(limit=10)
+        if not top_recs:
+            st.info("Run Full Scan to compute top stocks.")
+        else:
+            for rec in top_recs:
+                cmp_ = rec.get('price', 0.0)
+                tgt = rec.get('target_1', np.nan)
+                diff = tgt - cmp_ if tgt is not None and not np.isnan(tgt) else np.nan
+                reason = rec.get('reasons', '')
+                st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
+                st.markdown(f"<h3>{rec.get('ticker','')} • {rec.get('signal_strength','')}</h3>", unsafe_allow_html=True)
+                st.markdown(
+                    f"<div class='value'>CMP: ₹{cmp_:.2f} | Target: ₹{tgt:.2f} </div>",
+                    unsafe_allow_html=True
+                )
+                if not np.isnan(diff):
+                    st.markdown(
+                        f"<div class='sub'>Target Profit: ₹{diff:.2f} • Δ(CMP→Target): ₹{diff:.2f}</div>",
+                        unsafe_allow_html=True
+                    )
+                st.markdown(
+                    f"<div class='sub'>Timeframe: {rec.get('timeframe','')} • Setup: {rec.get('period','')}</div>",
+                    unsafe_allow_html=True
+                )
+                if reason:
+                    st.markdown(f"<div class='sub'>Reason: {reason}</div>", unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
+
+    # BTST tab
     with tab_btst:
         recs = st.session_state['recommendations'].get('BTST', [])
         st.subheader("BTST Opportunities")
@@ -686,7 +753,7 @@ def main():
         else:
             st.dataframe(pd.DataFrame(recs), use_container_width=True)
 
-    # Intraday
+    # Intraday tab
     with tab_intraday:
         recs = st.session_state['recommendations'].get('Intraday', [])
         st.subheader("Intraday Signals")
@@ -695,7 +762,7 @@ def main():
         else:
             st.dataframe(pd.DataFrame(recs), use_container_width=True)
 
-    # Weekly
+    # Weekly tab
     with tab_weekly:
         recs = st.session_state['recommendations'].get('Weekly', [])
         st.subheader("Weekly Swing Ideas")
@@ -704,7 +771,7 @@ def main():
         else:
             st.dataframe(pd.DataFrame(recs), use_container_width=True)
 
-    # Monthly
+    # Monthly tab
     with tab_monthly:
         recs = st.session_state['recommendations'].get('Monthly', [])
         st.subheader("Monthly Position Trades")
@@ -724,7 +791,7 @@ def main():
         )
         uploaded = st.file_uploader(
             "Upload GROWW portfolio CSV", type=["csv"], key="groww_csv_upload"
-        )  # file_uploader pattern [web:302]
+        )
         if uploaded is not None:
             try:
                 df_up = pd.read_csv(uploaded, sep=None, engine="python")
@@ -753,7 +820,8 @@ def main():
     with tab_config:
         st.markdown("### App Configuration")
 
-        with st.expander("Dhan", expanded=True):
+        # Dhan configuration and portfolio display
+        with st.expander("Dhan (Connect + Portfolio)", expanded=True):
             dhan_store = localS.getItem("dhan_config") or {}
             if dhan_store:
                 st.session_state['dhan_client_id'] = dhan_store.get("client_id", st.session_state['dhan_client_id'])
@@ -775,7 +843,21 @@ def main():
                         dhan_logout()
                 st.caption(st.session_state['dhan_login_msg'])
 
-        with st.expander("Telegram P&L Notifications", expanded=True):
+                # Live Dhan portfolio table
+                df_port, total_pnl = format_dhan_portfolio_table()
+                if df_port is None or df_port.empty:
+                    st.info("No Dhan holdings/positions fetched yet.")
+                else:
+                    c1, c2 = st.columns([3, 1])
+                    with c1:
+                        st.dataframe(df_port, use_container_width=True)
+                    with c2:
+                        st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
+                        st.markdown("<h3>Total P&L</h3>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='value'>₹{total_pnl:,.2f}</div>", unsafe_allow_html=True)
+                        st.markdown("</div>", unsafe_allow_html=True)
+
+        with st.expander("Telegram P&L Notifications", expanded=False):
             tg_store = localS.getItem("telegram_config") or {}
             if tg_store:
                 st.session_state['telegram_bot_token'] = tg_store.get("bot_token", st.session_state['telegram_bot_token'])
