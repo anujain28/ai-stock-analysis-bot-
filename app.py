@@ -26,7 +26,7 @@ import os
 import json
 from pathlib import Path
 
-from streamlit_local_storage import LocalStorage  # browser localStorage helper
+from streamlit_local_storage import LocalStorage
 
 # Dhan
 try:
@@ -69,9 +69,9 @@ def save_config_from_state():
     except Exception as e:
         st.warning(f"Could not save config: {e}")
 
-# ========= PAGE CONFIG & CSS =========
+# ========= PAGE CONFIG & ENHANCED CSS =========
 st.set_page_config(
-    page_title="🤖 AI Stock Analysis Bot",
+    page_title="🚀 AI Stock Analysis Bot",
     page_icon="📈",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -79,82 +79,429 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+    
+    * {
+        font-family: 'Inter', sans-serif;
+    }
+    
     .stApp {
-        background-color: #ffffff;
-        color: #111827;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 25%, #f093fb 50%, #4facfe 75%, #00f2fe 100%);
+        background-size: 400% 400%;
+        animation: gradientShift 15s ease infinite;
     }
-    body {
-        background-color: #ffffff;
-        color: #111827;
+    
+    @keyframes gradientShift {
+        0% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        100% { background-position: 0% 50%; }
     }
-    .main-header {
-        background: linear-gradient(120deg, #2563eb 0%, #7c3aed 35%, #ec4899 100%);
-        padding: 28px 30px;
-        border-radius: 18px;
+    
+    /* Hero Header */
+    .hero-header {
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.95) 0%, rgba(168, 85, 247, 0.95) 100%);
+        backdrop-filter: blur(20px);
+        padding: 3rem 2rem;
+        border-radius: 24px;
         text-align: center;
         color: white;
-        margin-bottom: 26px;
-        box-shadow: 0 14px 30px rgba(15,23,42,0.4);
-        border: 1px solid rgba(255,255,255,0.12);
+        margin-bottom: 2rem;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3), 0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+        position: relative;
+        overflow: hidden;
+        border: 2px solid rgba(255, 255, 255, 0.2);
     }
-    .main-header h1 {
-        margin-bottom: 4px;
-        font-size: 2.1rem;
+    
+    .hero-header::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(circle, rgba(255, 255, 255, 0.1) 0%, transparent 70%);
+        animation: pulse 4s ease-in-out infinite;
     }
-    .main-header p {
-        margin: 0;
-        font-size: 0.95rem;
-        opacity: 0.9;
+    
+    @keyframes pulse {
+        0%, 100% { transform: scale(1); opacity: 0.5; }
+        50% { transform: scale(1.1); opacity: 0.8; }
     }
-    .status-badge {
+    
+    .hero-header h1 {
+        font-size: clamp(1.8rem, 5vw, 3.5rem);
+        font-weight: 800;
+        margin-bottom: 0.5rem;
+        position: relative;
+        z-index: 1;
+        text-shadow: 2px 2px 20px rgba(0, 0, 0, 0.3);
+    }
+    
+    .hero-header .subtitle {
+        font-size: clamp(0.9rem, 2.5vw, 1.2rem);
+        opacity: 0.95;
+        font-weight: 500;
+        position: relative;
+        z-index: 1;
+    }
+    
+    .hero-header .emoji-float {
+        font-size: clamp(2rem, 6vw, 4rem);
         display: inline-block;
-        padding: 4px 10px;
+        animation: float 3s ease-in-out infinite;
+    }
+    
+    @keyframes float {
+        0%, 100% { transform: translateY(0px); }
+        50% { transform: translateY(-20px); }
+    }
+    
+    .status-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.5rem 1.5rem;
+        border-radius: 999px;
+        background: rgba(16, 185, 129, 0.2);
+        border: 2px solid rgba(16, 185, 129, 0.5);
+        color: #d1fae5;
+        font-size: 0.85rem;
+        font-weight: 600;
+        margin-top: 1rem;
+        backdrop-filter: blur(10px);
+    }
+    
+    .status-pill::before {
+        content: '●';
+        color: #10b981;
+        font-size: 1.2rem;
+        animation: blink 2s infinite;
+    }
+    
+    @keyframes blink {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.3; }
+    }
+    
+    /* Glass Card */
+    .glass-card {
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(20px);
+        border-radius: 20px;
+        padding: 1.5rem;
+        border: 2px solid rgba(255, 255, 255, 0.3);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+        margin-bottom: 1.5rem;
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .glass-card:hover {
+        transform: translateY(-5px);
+        box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(255, 255, 255, 0.5) inset;
+    }
+    
+    .glass-card::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: -100%;
+        width: 100%;
+        height: 100%;
+        background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+        transition: left 0.5s;
+    }
+    
+    .glass-card:hover::before {
+        left: 100%;
+    }
+    
+    /* Stock Card */
+    .stock-card {
+        background: linear-gradient(135deg, rgba(99, 102, 241, 0.1) 0%, rgba(168, 85, 247, 0.1) 100%);
+        backdrop-filter: blur(10px);
+        border-radius: 16px;
+        padding: 1.25rem;
+        border: 2px solid rgba(99, 102, 241, 0.2);
+        margin-bottom: 1rem;
+        transition: all 0.3s ease;
+        position: relative;
+        overflow: hidden;
+    }
+    
+    .stock-card:hover {
+        transform: scale(1.02);
+        border-color: rgba(99, 102, 241, 0.5);
+        box-shadow: 0 12px 40px rgba(99, 102, 241, 0.3);
+    }
+    
+    .stock-card .ticker {
+        font-size: 1.4rem;
+        font-weight: 700;
+        color: #4f46e5;
+        margin-bottom: 0.5rem;
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+    }
+    
+    .stock-card .badge {
+        display: inline-block;
+        padding: 0.25rem 0.75rem;
         border-radius: 999px;
         font-size: 0.7rem;
+        font-weight: 700;
         text-transform: uppercase;
-        letter-spacing: 0.07em;
-        background: rgba(15,23,42,0.4);
-        border: 1px solid rgba(148,163,184,0.6);
-        margin-top: 8px;
+        letter-spacing: 0.05em;
     }
-    .metric-card {
-        padding: 12px 12px;
+    
+    .badge-strong {
+        background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+        color: white;
+        box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+    }
+    
+    .badge-buy {
+        background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+        color: white;
+        box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
+    }
+    
+    .badge-hold {
+        background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+        color: white;
+        box-shadow: 0 4px 12px rgba(245, 158, 11, 0.4);
+    }
+    
+    .price-section {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 1rem;
+        margin: 1rem 0;
+    }
+    
+    .price-item {
+        text-align: center;
+        padding: 0.75rem;
+        background: rgba(255, 255, 255, 0.5);
         border-radius: 12px;
-        background: linear-gradient(135deg, #1e1b4b 0%, #4c1d95 100%);
-        border: 1px solid rgba(191,219,254,0.5);
-        box-shadow: 0 10px 25px rgba(15,23,42,0.9);
-        margin-bottom: 10px;
-        color: #e5e7eb;
+        border: 1px solid rgba(99, 102, 241, 0.2);
     }
-    .metric-card h3 {
-        font-size: 0.9rem;
-        color: #e5e7eb;
-        margin-bottom: 4px;
-    }
-    .metric-card .value {
-        font-size: 1.05rem;
-        font-weight: 600;
-        color: #f9fafb;
-    }
-    .metric-card .sub {
+    
+    .price-item .label {
         font-size: 0.75rem;
-        color: #c4b5fd;
+        color: #6b7280;
+        font-weight: 600;
+        margin-bottom: 0.25rem;
+        text-transform: uppercase;
     }
-    .side-section {
-        padding: 10px 12px;
+    
+    .price-item .value {
+        font-size: 1.1rem;
+        font-weight: 700;
+        color: #1f2937;
+    }
+    
+    .profit-highlight {
+        background: linear-gradient(135deg, #dcfce7 0%, #bbf7d0 100%);
+        padding: 0.75rem;
         border-radius: 12px;
-        background: linear-gradient(145deg, #4c1d95 0%, #581c87 50%, #7c3aed 100%);
-        border: 1px solid rgba(221,214,254,0.6);
-        margin-bottom: 12px;
+        border: 2px solid #10b981;
+        margin: 0.75rem 0;
+        text-align: center;
     }
-    .side-section h4 {
-        font-size: 0.9rem;
-        margin-bottom: 8px;
-        color: #f5f3ff;
+    
+    .profit-highlight .amount {
+        font-size: 1.3rem;
+        font-weight: 800;
+        color: #059669;
     }
+    
+    .profit-highlight .percentage {
+        font-size: 1rem;
+        font-weight: 600;
+        color: #047857;
+    }
+    
+    .reason-box {
+        background: rgba(99, 102, 241, 0.05);
+        border-left: 4px solid #6366f1;
+        padding: 0.75rem;
+        border-radius: 8px;
+        margin-top: 0.75rem;
+        font-size: 0.85rem;
+        color: #4b5563;
+        line-height: 1.6;
+    }
+    
+    /* Sidebar Styling */
     [data-testid=stSidebar] {
-        background: radial-gradient(circle at top, #4c1d95 0, #581c87 40%, #2e1065 100%);
-        color: #f9fafb;
+        background: linear-gradient(180deg, rgba(99, 102, 241, 0.95) 0%, rgba(139, 92, 246, 0.95) 100%);
+        backdrop-filter: blur(20px);
+    }
+    
+    [data-testid=stSidebar] .sidebar-section {
+        background: rgba(255, 255, 255, 0.15);
+        backdrop-filter: blur(10px);
+        border-radius: 16px;
+        padding: 1rem;
+        margin-bottom: 1rem;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+    
+    [data-testid=stSidebar] h4 {
+        color: white;
+        font-weight: 700;
+        margin-bottom: 0.75rem;
+        font-size: 0.95rem;
+    }
+    
+    /* Button Styling */
+    .stButton > button {
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+        color: white;
+        border: none;
+        border-radius: 12px;
+        padding: 0.75rem 1.5rem;
+        font-weight: 600;
+        font-size: 0.95rem;
+        transition: all 0.3s ease;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    }
+    
+    .stButton > button:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 8px 20px rgba(99, 102, 241, 0.4);
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+    }
+    
+    /* Metric Cards */
+    .metric-showcase {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 1rem;
+        margin: 1.5rem 0;
+    }
+    
+    .metric-box {
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.9) 0%, rgba(243, 244, 246, 0.9) 100%);
+        backdrop-filter: blur(10px);
+        border-radius: 16px;
+        padding: 1.5rem;
+        border: 2px solid rgba(99, 102, 241, 0.2);
+        text-align: center;
+        transition: all 0.3s ease;
+    }
+    
+    .metric-box:hover {
+        transform: translateY(-5px);
+        border-color: rgba(99, 102, 241, 0.5);
+        box-shadow: 0 12px 32px rgba(99, 102, 241, 0.2);
+    }
+    
+    .metric-box .icon {
+        font-size: 2.5rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .metric-box .label {
+        font-size: 0.85rem;
+        color: #6b7280;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+    }
+    
+    .metric-box .value {
+        font-size: 2rem;
+        font-weight: 800;
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+    }
+    
+    /* Mobile Optimizations */
+    @media (max-width: 768px) {
+        .hero-header {
+            padding: 2rem 1rem;
+        }
+        
+        .hero-header h1 {
+            font-size: 1.8rem;
+        }
+        
+        .glass-card {
+            padding: 1rem;
+        }
+        
+        .stock-card {
+            padding: 1rem;
+        }
+        
+        .price-section {
+            grid-template-columns: repeat(2, 1fr);
+        }
+        
+        .metric-showcase {
+            grid-template-columns: 1fr;
+        }
+    }
+    
+    /* Loading Animation */
+    @keyframes shimmer {
+        0% { background-position: -1000px 0; }
+        100% { background-position: 1000px 0; }
+    }
+    
+    .loading-shimmer {
+        background: linear-gradient(90deg, #f3f4f6 25%, #e5e7eb 50%, #f3f4f6 75%);
+        background-size: 1000px 100%;
+        animation: shimmer 2s infinite;
+    }
+    
+    /* Info boxes */
+    .info-box {
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.1) 0%, rgba(147, 197, 253, 0.1) 100%);
+        border-left: 4px solid #3b82f6;
+        padding: 1rem;
+        border-radius: 12px;
+        margin: 1rem 0;
+        font-size: 0.9rem;
+        color: #1e40af;
+    }
+    
+    .success-box {
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.1) 0%, rgba(167, 243, 208, 0.1) 100%);
+        border-left: 4px solid #10b981;
+        color: #047857;
+    }
+    
+    .warning-box {
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(252, 211, 77, 0.1) 100%);
+        border-left: 4px solid #f59e0b;
+        color: #92400e;
+    }
+    
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+        width: 10px;
+        height: 10px;
+    }
+    
+    ::-webkit-scrollbar-track {
+        background: rgba(0, 0, 0, 0.1);
+        border-radius: 10px;
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+        border-radius: 10px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -560,7 +907,6 @@ def run_analysis():
     for p in ['BTST', 'Intraday', 'Weekly', 'Monthly']:
         st.session_state['recommendations'][p] = analyze_multiple_stocks(STOCK_UNIVERSE, p, max_results=20)
 
-# ========= BACKGROUND AUTO SCAN =========
 def market_hours_window():
     now = datetime.now(IST)
     start = now.replace(hour=9, minute=10, second=0, microsecond=0)
@@ -583,7 +929,6 @@ def maybe_run_auto_scan():
     if should_run:
         run_analysis()
 
-# ========= TOP STOCKS AGGREGATION (NO DUPLICATES) =========
 def get_top_stocks(limit: int = 10):
     all_recs = []
     for period in ['BTST', 'Intraday', 'Weekly', 'Monthly']:
@@ -607,7 +952,6 @@ def get_top_stocks(limit: int = 10):
         return []
     return pd.DataFrame(unique_rows).to_dict(orient="records")
 
-# ========= SIDEBAR NAVIGATION =========
 PAGES = [
     "🔥 Top Stocks",
     "🌙 BTST",
@@ -620,69 +964,45 @@ PAGES = [
 
 def sidebar_nav():
     with st.sidebar:
-        st.markdown("<div class='side-section'><h4>📂 Navigation</h4>", unsafe_allow_html=True)
-        page = st.radio(
-            "Go to",
-            PAGES,
-            index=0,
-            label_visibility="collapsed",
-        )  # navigation panel [web:325][web:326][web:333]
+        st.markdown("<div class='sidebar-section'>", unsafe_allow_html=True)
+        st.markdown("<h4>📂 Navigation</h4>", unsafe_allow_html=True)
+        page = st.radio("Go to", PAGES, index=0, label_visibility="collapsed")
         st.markdown("</div>", unsafe_allow_html=True)
 
-        # Dhan portfolio quick view in sidebar
-        with st.expander("Dhan Portfolio (Quick View)", expanded=False):
+        with st.expander("💼 Dhan Portfolio", expanded=False):
             df_port, total_pnl = format_dhan_portfolio_table()
             if df_port is None or df_port.empty:
-                st.caption("No Dhan holdings/positions yet or not connected.")
+                st.caption("No Dhan holdings/positions yet")
             else:
                 st.dataframe(df_port, use_container_width=True, hide_index=True)
-                st.caption(f"Total P&L: ₹{total_pnl:,.2f}")
-
+                pnl_color = "🟢" if total_pnl >= 0 else "🔴"
+                st.markdown(f"**{pnl_color} Total P&L: ₹{total_pnl:,.2f}**")
     return page
 
-# ========= GROWW / GROWW ANALYSIS =========
 def analyze_groww_portfolio(df: pd.DataFrame):
     cols = {c.lower(): c for c in df.columns}
-    required = [
-        "stock name",
-        "isin",
-        "quantity",
-        "average buy price per share",
-        "total investment",
-        "total cmp",
-        "total p&l",
-    ]
+    required = ["stock name", "isin", "quantity", "average buy price per share", "total investment", "total cmp", "total p&l"]
     for r in required:
         if r not in cols:
             return {"error": "Columns must match the GROWW template exactly."}
     qcol = cols["quantity"]
     invcol = cols["total investment"]
     pnlcol = cols["total p&l"]
-
     df_use = df.copy()
     df_use["_qty"] = pd.to_numeric(df_use[qcol], errors="coerce").fillna(0.0)
     df_use["_inv"] = pd.to_numeric(df_use[invcol], errors="coerce").fillna(0.0)
     df_use["_pnl"] = pd.to_numeric(df_use[pnlcol], errors="coerce").fillna(0.0)
-
     total_inv = float(df_use["_inv"].sum())
     total_pnl = float(df_use["_pnl"].sum())
     positions = int((df_use["_qty"] > 0).sum())
-    top = (
-        df_use.sort_values("_inv", ascending=False)[[cols["stock name"], cols["quantity"], invcol, pnlcol]]
-        .head(10)
-        .rename(columns={cols["stock name"]: "Stock Name", cols["quantity"]: "Quantity"})
+    top = df_use.sort_values("_inv", ascending=False)[[cols["stock name"], cols["quantity"], invcol, pnlcol]].head(10).rename(
+        columns={cols["stock name"]: "Stock Name", cols["quantity"]: "Quantity"}
     )
-    return {
-        "total_investment": total_inv,
-        "total_pnl": total_pnl,
-        "positions": positions,
-        "top_holdings": top,
-    }
+    return {"total_investment": total_inv, "total_pnl": total_pnl, "positions": positions, "top_holdings": top}
 
-# ========= FLASH CARD RENDER =========
 def render_reco_cards(recs: List[Dict], label: str):
     if not recs:
-        st.info(f"Run Full Scan to generate {label} recommendations.")
+        st.markdown(f"<div class='info-box'>💡 Run Full Scan to generate {label} recommendations</div>", unsafe_allow_html=True)
         return
     df = pd.DataFrame(recs).sort_values("score", ascending=False).head(10)
     for _, rec in df.iterrows():
@@ -691,188 +1011,291 @@ def render_reco_cards(recs: List[Dict], label: str):
         diff = tgt - cmp_ if tgt is not None and not np.isnan(tgt) else np.nan
         profit_pct = (diff / cmp_ * 100) if cmp_ and not np.isnan(diff) else np.nan
         reason = rec.get('reasons', '')
-        st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
-        st.markdown(f"<h3>{rec.get('ticker','')} • {rec.get('signal_strength','')}</h3>", unsafe_allow_html=True)
-        st.markdown(
-            f"<div class='value'>CMP: ₹{cmp_:.2f} | Target: ₹{tgt:.2f}</div>",
-            unsafe_allow_html=True
-        )
+        strength = rec.get('signal_strength', 'BUY')
+        badge_class = 'badge-strong' if strength == 'STRONG BUY' else 'badge-buy' if strength == 'BUY' else 'badge-hold'
+        
+        st.markdown("<div class='stock-card'>", unsafe_allow_html=True)
+        st.markdown(f"""
+            <div class='ticker'>
+                <span>📈 {rec.get('ticker','')}</span>
+                <span class='badge {badge_class}'>{strength}</span>
+            </div>
+        """, unsafe_allow_html=True)
+        
+        st.markdown("<div class='price-section'>", unsafe_allow_html=True)
+        st.markdown(f"""
+            <div class='price-item'>
+                <div class='label'>💰 Current</div>
+                <div class='value'>₹{cmp_:.2f}</div>
+            </div>
+            <div class='price-item'>
+                <div class='label'>🎯 Target</div>
+                <div class='value'>₹{tgt:.2f}</div>
+            </div>
+            <div class='price-item'>
+                <div class='label'>🛡️ Stop Loss</div>
+                <div class='value'>₹{rec.get('stop_loss', 0):.2f}</div>
+            </div>
+            <div class='price-item'>
+                <div class='label'>⏱️ Timeframe</div>
+                <div class='value' style='font-size: 0.85rem;'>{rec.get('timeframe','')}</div>
+            </div>
+        """, unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+        
         if not np.isnan(diff):
-            st.markdown(
-                f"<div class='sub'>Target Profit: ₹{diff:.2f} • Profit %: {profit_pct:.2f}%</div>",
-                unsafe_allow_html=True
-            )
-        st.markdown(
-            f"<div class='sub'>Timeframe: {rec.get('timeframe','')} • Setup: {rec.get('period',label)}</div>",
-            unsafe_allow_html=True
-        )
+            st.markdown(f"""
+                <div class='profit-highlight'>
+                    <div class='amount'>💎 Potential Profit: ₹{diff:.2f}</div>
+                    <div class='percentage'>📊 Expected Return: +{profit_pct:.2f}%</div>
+                </div>
+            """, unsafe_allow_html=True)
+        
         if reason:
-            st.markdown(f"<div class='sub'>Reason: {reason}</div>", unsafe_allow_html=True)
+            st.markdown(f"<div class='reason-box'>📌 <strong>Technical Setup:</strong> {reason}</div>", unsafe_allow_html=True)
+        
         st.markdown("</div>", unsafe_allow_html=True)
 
-# ========= MAIN UI =========
 def main():
     st.markdown("""
-    <div class='main-header'>
-        <h1>🤖 AI Stock Analysis Bot</h1>
-        <p>Multi-timeframe scanner + Dhan + GROWW portfolio analyzer</p>
-        <div class="status-badge">Live • IST</div>
-    </div>
+        <div class='hero-header'>
+            <div class='emoji-float'>🚀📈💎</div>
+            <h1>AI Stock Analysis Bot</h1>
+            <p class='subtitle'>Multi-timeframe scanner with Dhan & Groww integration</p>
+            <div class='status-pill'>Live Trading Dashboard • IST</div>
+        </div>
     """, unsafe_allow_html=True)
 
     maybe_run_auto_scan()
 
-    # Top controls
-    c1, c2, c3 = st.columns([3, 1.2, 1])
-    with c1:
-        if st.button("👈 Click here then 🚀 Run Full Scan", type="primary", use_container_width=True):
-            run_analysis()
-    with c2:
-        if st.button("🔄 Refresh Page", use_container_width=True):
+    # Action buttons
+    col1, col2, col3 = st.columns([3, 1.5, 1])
+    with col1:
+        if st.button("🚀 Run Full Market Scan", type="primary", use_container_width=True):
+            with st.spinner("🔍 Analyzing Nifty 200 stocks..."):
+                run_analysis()
+                st.success("✅ Analysis Complete!")
+    with col2:
+        if st.button("🔄 Refresh Dashboard", use_container_width=True):
             st.rerun()
-    with c3:
-        st.metric("Universe", len(STOCK_UNIVERSE))
+    with col3:
+        st.metric("📊 Universe", len(STOCK_UNIVERSE))
 
     if st.session_state['last_analysis_time']:
-        st.caption(f"Last Analysis: {st.session_state['last_analysis_time'].strftime('%d-%m-%Y %I:%M %p')}")
+        st.markdown(f"<div class='info-box'>⏰ Last scan: {st.session_state['last_analysis_time'].strftime('%d %b %Y, %I:%M %p IST')}</div>", unsafe_allow_html=True)
 
-    st.markdown("---")
-
+    st.markdown("<br>", unsafe_allow_html=True)
     page = sidebar_nav()
 
     if page == "🔥 Top Stocks":
-        st.subheader("Top 10 Stocks Across All Setups")
+        st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+        st.markdown("### 🏆 Top 10 Stocks Across All Timeframes")
+        st.markdown("Premium opportunities based on highest technical scores")
+        st.markdown("</div>", unsafe_allow_html=True)
         top_recs = get_top_stocks(limit=10)
         render_reco_cards(top_recs, "Top")
+        
     elif page == "🌙 BTST":
-        st.subheader("BTST Opportunities")
+        st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+        st.markdown("### 🌙 BTST Opportunities")
+        st.markdown("Buy Today, Sell Tomorrow setups (1-3 day holds)")
+        st.markdown("</div>", unsafe_allow_html=True)
         recs = st.session_state['recommendations'].get('BTST', [])
         for r in recs:
             r.setdefault("period", "BTST")
         render_reco_cards(recs, "BTST")
+        
     elif page == "⚡ Intraday":
-        st.subheader("Intraday Signals")
+        st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+        st.markdown("### ⚡ Intraday Trading Signals")
+        st.markdown("Same-day trading opportunities with quick profit targets")
+        st.markdown("</div>", unsafe_allow_html=True)
         recs = st.session_state['recommendations'].get('Intraday', [])
         for r in recs:
             r.setdefault("period", "Intraday")
         render_reco_cards(recs, "Intraday")
+        
     elif page == "📆 Weekly":
-        st.subheader("Weekly Swing Ideas")
+        st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+        st.markdown("### 📆 Weekly Swing Trades")
+        st.markdown("Medium-term positions (up to 1 week)")
+        st.markdown("</div>", unsafe_allow_html=True)
         recs = st.session_state['recommendations'].get('Weekly', [])
         for r in recs:
             r.setdefault("period", "Weekly")
         render_reco_cards(recs, "Weekly")
+        
     elif page == "📅 Monthly":
-        st.subheader("Monthly Position Trades")
+        st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+        st.markdown("### 📅 Monthly Position Trades")
+        st.markdown("Long-term opportunities (2-4 weeks)")
+        st.markdown("</div>", unsafe_allow_html=True)
         recs = st.session_state['recommendations'].get('Monthly', [])
         for r in recs:
             r.setdefault("period", "Monthly")
         render_reco_cards(recs, "Monthly")
+        
     elif page == "📊 Groww":
-        st.subheader("Groww Portfolio Analysis (CSV Upload)")
-        st.markdown("CSV template columns (exact names):")
-        st.code(
-            "Stock Name\tISIN\tQuantity\tAverage buy price per share\t"
-            "Total Investment\tTotal CMP\tTOTAL P&L",
-            language="text"
-        )
-        uploaded = st.file_uploader(
-            "Upload Groww portfolio CSV", type=["csv"], key="groww_csv_upload"
-        )
+        st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+        st.markdown("### 📊 Groww Portfolio Analyzer")
+        st.markdown("Upload your Groww CSV to analyze your portfolio performance")
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        st.markdown("<div class='info-box'>", unsafe_allow_html=True)
+        st.markdown("**📋 CSV Template Format:**")
+        st.code("Stock Name | ISIN | Quantity | Average buy price per share | Total Investment | Total CMP | TOTAL P&L", language="text")
+        st.markdown("</div>", unsafe_allow_html=True)
+        
+        uploaded = st.file_uploader("📁 Upload Groww Portfolio CSV", type=["csv"], key="groww_csv_upload")
         if uploaded is not None:
             try:
                 df_up = pd.read_csv(uploaded, sep=None, engine="python")
-                st.write("Preview:")
+                st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+                st.markdown("**📄 Data Preview:**")
                 st.dataframe(df_up.head(), use_container_width=True, hide_index=True)
+                st.markdown("</div>", unsafe_allow_html=True)
+                
                 analysis = analyze_groww_portfolio(df_up)
                 if "error" in analysis:
-                    st.error(analysis["error"])
-                else:
-                    st.markdown("##### Summary")
-                    c1, c2, c3 = st.columns(3)
-                    with c1:
-                        st.metric("Total Investment", f"₹{analysis['total_investment']:,.2f}")
-                    with c2:
-                        st.metric("Total P&L", f"₹{analysis['total_pnl']:,.2f}")
-                    with c3:
-                        st.metric("Positions", analysis["positions"])
-                    st.markdown("##### Top holdings by capital")
-                    st.dataframe(analysis["top_holdings"], use_container_width=True, hide_index=True)
-            except Exception as e:
-                st.error(f"Error reading uploaded CSV: {e}")
-        else:
-            st.info("Upload your Groww portfolio CSV to see analysis here.")
-    elif page == "⚙️ Configuration":
-        st.markdown("### App Configuration")
+                    st.markdown("<div class='success-box'>✅ Settings saved successfully!</div>", unsafe_allow_html=True)
+            with c2:
+                if st.button("📤 Send Test Message", use_container_width=True, key="btn_send_pnl"):
+                    text = "🤖 Stock Bot Test: Telegram notifications are working perfectly!"
+                    tg_resp = send_telegram_message(text) if tg_token and tg_chat else {"info": "Telegram not configured"}
+                    if tg_resp.get("ok"):
+                        st.markdown("<div class='success-box'>✅ Test message sent to Telegram!</div>", unsafe_allow_html=True)
+                    else:
+                        st.markdown(f"<div class='warning-box'>⚠️ Failed: {tg_resp.get('error', 'Unknown error')}</div>", unsafe_allow_html=True)
 
-        with st.expander("Dhan (Connect + Portfolio)", expanded=True):
+        with st.expander("🔢 Nifty 200 Universe Management", expanded=False):
+            st.markdown("<div class='info-box'>", unsafe_allow_html=True)
+            st.markdown(f"**📊 Current Universe Size:** {len(STOCK_UNIVERSE)} stocks")
+            st.markdown("**📁 Data Source:** `data/ind_nifty200list.csv`")
+            st.markdown("</div>", unsafe_allow_html=True)
+            
+            if st.button("🔄 Regenerate NIFTY 200 CSV", use_container_width=True, key="btn_regen_nifty"):
+                ok = regenerate_nifty200_csv_from_master()
+                if ok:
+                    st.markdown("<div class='success-box'>✅ Successfully regenerated universe data!</div>", unsafe_allow_html=True)
+                else:
+                    st.markdown("<div class='warning-box'>⚠️ Failed to regenerate CSV. Check error messages above.</div>", unsafe_allow_html=True)
+
+    # Footer
+    st.markdown("<br><br>", unsafe_allow_html=True)
+    st.markdown("""
+        <div class='glass-card' style='text-align: center; padding: 2rem;'>
+            <h3 style='background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent;'>
+                🚀 AI-Powered Stock Analysis Platform
+            </h3>
+            <p style='color: #6b7280; margin-top: 0.5rem;'>
+                Powered by Technical Analysis • Real-time Market Data • Multi-timeframe Strategies
+            </p>
+            <p style='color: #9ca3af; font-size: 0.85rem; margin-top: 1rem;'>
+                💡 Disclaimer: This tool is for educational purposes only. Always do your own research before investing.
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+
+if __name__ == "__main__":
+    main()(f"<div class='warning-box'>⚠️ {analysis['error']}</div>", unsafe_allow_html=True)
+                else:
+                    st.markdown("<div class='metric-showcase'>", unsafe_allow_html=True)
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.markdown("""
+                            <div class='metric-box'>
+                                <div class='icon'>💰</div>
+                                <div class='label'>Total Investment</div>
+                                <div class='value'>₹{:,.0f}</div>
+                            </div>
+                        """.format(analysis['total_investment']), unsafe_allow_html=True)
+                    with col2:
+                        pnl_emoji = "📈" if analysis['total_pnl'] >= 0 else "📉"
+                        st.markdown("""
+                            <div class='metric-box'>
+                                <div class='icon'>{}</div>
+                                <div class='label'>Total P&L</div>
+                                <div class='value'>₹{:,.0f}</div>
+                            </div>
+                        """.format(pnl_emoji, analysis['total_pnl']), unsafe_allow_html=True)
+                    with col3:
+                        st.markdown("""
+                            <div class='metric-box'>
+                                <div class='icon'>📊</div>
+                                <div class='label'>Positions</div>
+                                <div class='value'>{}</div>
+                            </div>
+                        """.format(analysis['positions']), unsafe_allow_html=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
+                    
+                    st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+                    st.markdown("**🏆 Top Holdings by Capital**")
+                    st.dataframe(analysis["top_holdings"], use_container_width=True, hide_index=True)
+                    st.markdown("</div>", unsafe_allow_html=True)
+            except Exception as e:
+                st.markdown(f"<div class='warning-box'>⚠️ Error reading CSV: {e}</div>", unsafe_allow_html=True)
+        else:
+            st.markdown("<div class='info-box'>💡 Upload your Groww portfolio CSV to see detailed analysis</div>", unsafe_allow_html=True)
+    
+    elif page == "⚙️ Configuration":
+        st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+        st.markdown("### ⚙️ Application Settings")
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        with st.expander("🔐 Dhan Integration", expanded=True):
             dhan_store = localS.getItem("dhan_config") or {}
             if dhan_store:
                 st.session_state['dhan_client_id'] = dhan_store.get("client_id", st.session_state['dhan_client_id'])
 
-            dhan_enable = st.checkbox("Enable Dhan", value=st.session_state.get('dhan_enabled', False))
+            dhan_enable = st.checkbox("✅ Enable Dhan Integration", value=st.session_state.get('dhan_enabled', False))
             st.session_state['dhan_enabled'] = dhan_enable
             if dhan_enable:
-                dcid = st.text_input("Client ID", value=st.session_state.get('dhan_client_id', ''), key="cfg_dhan_client")
-                dtoken = st.text_input("Access Token", value=st.session_state.get('dhan_access_token', ''), type="password", key="cfg_dhan_token")
+                dcid = st.text_input("🆔 Client ID", value=st.session_state.get('dhan_client_id', ''), key="cfg_dhan_client")
+                dtoken = st.text_input("🔑 Access Token", value=st.session_state.get('dhan_access_token', ''), type="password", key="cfg_dhan_token")
                 st.session_state['dhan_client_id'] = dcid
                 st.session_state['dhan_access_token'] = dtoken
                 c1, c2 = st.columns(2)
                 with c1:
-                    if st.button("🔑 Connect Dhan", use_container_width=True, key="btn_connect_dhan"):
+                    if st.button("🔌 Connect Dhan", use_container_width=True, key="btn_connect_dhan"):
                         dhan_login(dcid, dtoken)
                         localS.setItem("dhan_config", {"client_id": dcid})
                 with c2:
-                    if st.button("🚪 Logout Dhan", use_container_width=True, key="btn_logout_dhan"):
+                    if st.button("🚪 Logout", use_container_width=True, key="btn_logout_dhan"):
                         dhan_logout()
-                st.caption(st.session_state['dhan_login_msg'])
+                
+                msg = st.session_state['dhan_login_msg']
+                if "✅" in msg:
+                    st.markdown(f"<div class='success-box'>{msg}</div>", unsafe_allow_html=True)
+                elif "❌" in msg:
+                    st.markdown(f"<div class='warning-box'>{msg}</div>", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"<div class='info-box'>{msg}</div>", unsafe_allow_html=True)
 
                 df_port, total_pnl = format_dhan_portfolio_table()
-                if df_port is None or df_port.empty:
-                    st.info("No Dhan holdings/positions fetched yet.")
-                else:
-                    c1, c2 = st.columns([3, 1])
-                    with c1:
-                        st.dataframe(df_port, use_container_width=True, hide_index=True)
-                    with c2:
-                        st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
-                        st.markdown("<h3>Total P&L</h3>", unsafe_allow_html=True)
-                        st.markdown(f"<div class='value'>₹{total_pnl:,.2f}</div>", unsafe_allow_html=True)
-                        st.markdown("</div>", unsafe_allow_html=True)
+                if df_port is not None and not df_port.empty:
+                    st.markdown("<div class='glass-card'>", unsafe_allow_html=True)
+                    st.markdown("**💼 Your Portfolio**")
+                    st.dataframe(df_port, use_container_width=True, hide_index=True)
+                    pnl_emoji = "🟢" if total_pnl >= 0 else "🔴"
+                    st.markdown(f"**{pnl_emoji} Total P&L: ₹{total_pnl:,.2f}**")
+                    st.markdown("</div>", unsafe_allow_html=True)
 
-        with st.expander("Telegram P&L Notifications", expanded=False):
+        with st.expander("📱 Telegram Notifications", expanded=False):
             tg_store = localS.getItem("telegram_config") or {}
             if tg_store:
                 st.session_state['telegram_bot_token'] = tg_store.get("bot_token", st.session_state['telegram_bot_token'])
                 st.session_state['telegram_chat_id'] = tg_store.get("chat_id", st.session_state['telegram_chat_id'])
 
-            notify_toggle = st.checkbox("Enable P&L notifications (30 min)", value=st.session_state['notify_enabled'], key="cfg_notify_toggle")
+            notify_toggle = st.checkbox("🔔 Enable P&L notifications (every 30 min)", value=st.session_state['notify_enabled'], key="cfg_notify_toggle")
             st.session_state['notify_enabled'] = notify_toggle
-            tg_token = st.text_input("Bot Token", value=st.session_state['telegram_bot_token'], key="cfg_tg_token")
-            tg_chat = st.text_input("Chat ID", value=st.session_state['telegram_chat_id'], key="cfg_tg_chat")
+            tg_token = st.text_input("🤖 Bot Token", value=st.session_state['telegram_bot_token'], key="cfg_tg_token")
+            tg_chat = st.text_input("💬 Chat ID", value=st.session_state['telegram_chat_id'], key="cfg_tg_chat")
             st.session_state['telegram_bot_token'] = tg_token
             st.session_state['telegram_chat_id'] = tg_chat
 
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("💾 Save settings", use_container_width=True, key="btn_save_settings"):
+                if st.button("💾 Save Settings", use_container_width=True, key="btn_save_settings"):
                     save_config_from_state()
                     localS.setItem("telegram_config", {"bot_token": tg_token, "chat_id": tg_chat})
-                    st.success("Saved to config.json + browser storage")
-            with c2:
-                if st.button("📤 Send P&L Now", use_container_width=True, key="btn_send_pnl"):
-                    text = "P&L summary feature hooked to Dhan portfolio."
-                    tg_resp = send_telegram_message(text) if tg_token and tg_chat else {"info": "Telegram not configured"}
-                    st.success("Triggered P&L send. Check Telegram.")
-                    st.json({"telegram": tg_resp})
-
-        with st.expander("Nifty 200 Universe", expanded=False):
-            if st.button("🔁 Regenerate NIFTY 200 CSV (internal)", use_container_width=True, key="btn_regen_nifty"):
-                ok = regenerate_nifty200_csv_from_master()
-                if ok:
-                    st.success("Regenerated data/nifty200_yahoo.csv inside app container.")
-                else:
-                    st.error("Failed to regenerate CSV. See error above.")
-
-if __name__ == "__main__":
-    main()
+                    st.markdown
