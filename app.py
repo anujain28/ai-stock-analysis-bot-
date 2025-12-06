@@ -192,8 +192,19 @@ st.markdown("""
     .st-key-refresh_btn button:hover {
         background-color: #ea580c !important;
     }
+
+    /* File uploader "Browse files" styling */
+    div[data-testid="stFileUploader"] > label div[data-testid="stFileUploadDropzone"] {
+        border: 1px solid #4f46e5;
+        background-color: #eef2ff;
+        color: #1e293b;
+    }
+    div[data-testid="stFileUploader"] > label div[data-testid="stFileUploadDropzone"]:hover {
+        border-color: #4338ca;
+        background-color: #e0e7ff;
+    }
 </style>
-""", unsafe_allow_html=True)  # styling [web:15][web:26]
+""", unsafe_allow_html=True)  # file uploader & other styling [web:41][web:49]
 
 IST = pytz.timezone('Asia/Kolkata')
 
@@ -652,17 +663,13 @@ def get_top_stocks(limit: int = 10):
     return pd.DataFrame(unique_rows).to_dict(orient="records")
 
 # ========= GRADED GROWW ANALYSIS & FUNDAMENTALS =========
-
 def load_groww_file(uploaded_file):
-    """
-    Load CSV or Excel (xls/xlsx) into DataFrame with auto-separator for CSV.
-    """
     name = uploaded_file.name.lower()
     try:
         if name.endswith(".csv"):
             df = pd.read_csv(uploaded_file, sep=None, engine="python")
         elif name.endswith((".xls", ".xlsx")):
-            df = pd.read_excel(uploaded_file)  # pandas supports xls/xlsx via engines [web:15][web:25][web:28]
+            df = pd.read_excel(uploaded_file)  # xls/xlsx via pandas engines [web:41]
         else:
             st.error("Only CSV, XLS, or XLSX files are supported.")
             return pd.DataFrame()
@@ -672,26 +679,45 @@ def load_groww_file(uploaded_file):
         return pd.DataFrame()
 
 def map_groww_columns(df: pd.DataFrame):
-    cols = {c.lower().strip(): c for c in df.columns}
-    required = [
-        "stock name",
-        "isin",
-        "quantity",
-        "average buy price per share",
-        "total investment",
-        "total cmp",
-        "total p&l",
-    ]
-    for r in required:
-        if r not in cols:
-            return None, f"Columns must match the Groww template exactly. Missing: {r}"
-    return cols, None
+    """
+    Expected headers (exact text in your file):
+    Stock Name | ISIN | Quantity | Average buy price per share | Total Investment | Total CMP | TOTAL P&L
+    Matching is case- and space-insensitive to avoid small formatting issues.
+    """
+    # Normalize incoming column names (lower + strip) for matching [web:48][web:50]
+    norm_cols = {c.lower().strip(): c for c in df.columns}
+
+    # Logical keys -> normalized header text
+    required_map = {
+        "stock name": "stock name",
+        "isin": "isin",
+        "quantity": "quantity",
+        "average buy price per share": "average buy price per share",
+        "total investment": "total investment",
+        "total cmp": "total cmp",
+        "total p&l": "total p&l",   # from "TOTAL P&L"
+    }
+
+    out = {}
+    missing = []
+    for logical_key, norm_header in required_map.items():
+        if norm_header in norm_cols:
+            out[logical_key] = norm_cols[norm_header]  # actual column name in df
+        else:
+            missing.append(logical_key)
+
+    if missing:
+        msg = (
+            "Columns must match this Groww template exactly: "
+            "'Stock Name, ISIN, Quantity, Average buy price per share, "
+            "Total Investment, Total CMP, TOTAL P&L'. "
+            "Missing or mismatched: " + ", ".join(missing)
+        )
+        return None, msg
+
+    return out, None
 
 def fetch_dividend_and_cagr(stock_name: str, isin: str, cmp_value: float):
-    """
-    Try to fetch dividend yield and approximate CAGR from yfinance.
-    If not available, return defaults: dividend_yield=0, dividend_rupees_per_share=0, cagr=5%.
-    """
     sym = ""
     if stock_name:
         sym = stock_name.split()[0].upper().strip()
@@ -701,7 +727,7 @@ def fetch_dividend_and_cagr(stock_name: str, isin: str, cmp_value: float):
 
     div_yield = 0.0
     div_rupees = 0.0
-    cagr = 0.05  # 5% default [web:21][web:30]
+    cagr = 0.05  # default 5%
 
     if not yf_ticker:
         return div_yield, div_rupees, cagr
@@ -711,7 +737,7 @@ def fetch_dividend_and_cagr(stock_name: str, isin: str, cmp_value: float):
         info = t.info or {}
         raw_yield = info.get("dividendYield")
         if raw_yield is not None:
-            div_yield = float(raw_yield)  # dividend per share divided by price per share [web:27][web:29]
+            div_yield = float(raw_yield)
         if cmp_value and div_yield:
             div_rupees = div_yield * cmp_value
 
@@ -722,17 +748,13 @@ def fetch_dividend_and_cagr(stock_name: str, isin: str, cmp_value: float):
             last_price = float(hist["Close"].iloc[-1])
             years = max((hist.index[-1] - hist.index[0]).days / 365.0, 1.0)
             if first_price > 0 and years > 0:
-                cagr = (last_price / first_price) ** (1.0 / years) - 1.0  # CAGR formula [web:21]
+                cagr = (last_price / first_price) ** (1.0 / years) - 1.0  # CAGR [web:21]
     except Exception:
         pass
 
     return float(div_yield), float(div_rupees), float(cagr)
 
 def classify_strength(pct_pnl: float, cagr: float, price_zero: bool) -> str:
-    """
-    Categorize into Super Strong / Strong / Medium / Sell.
-    Zero-priced stocks are always Super Strong.
-    """
     if price_zero:
         return "Super Strong"
     if cagr >= 0.15 and pct_pnl >= 20:
@@ -744,9 +766,6 @@ def classify_strength(pct_pnl: float, cagr: float, price_zero: bool) -> str:
     return "Sell"
 
 def project_value(current_value: float, cagr: float, yearly_dividend: float, years: int) -> float:
-    """
-    Future value projection with growth (CAGR) and simple additive dividends.
-    """
     future = current_value * ((1 + cagr) ** years)
     future += yearly_dividend * years
     return float(future)
@@ -822,7 +841,6 @@ def main():
 
     sidebar_nav()
 
-    # Time-based auto scan (runs whenever script reruns)
     auto_scan_if_due()
 
     c1, c2 = st.columns([3, 1.2])
@@ -910,6 +928,7 @@ def main():
             cmpcol = cols["total cmp"]
             pnlcol = cols["total p&l"]
             namecol = cols["stock name"]
+            isin_col = cols["isin"]
 
             df = df_up.copy()
             df["_qty"] = pd.to_numeric(df[qcol], errors="coerce").fillna(0.0)
@@ -933,11 +952,10 @@ def main():
             prog = st.progress(0.0)
             for i, row in df.iterrows():
                 stock_name = str(row[namecol])
-                qty = float(row["_qty"])
                 cmp_ps = float(row["_cmp_per_share"])
                 is_zero_price = cmp_ps <= 0.0
 
-                div_y, div_r, cagr = fetch_dividend_and_cagr(stock_name, str(row[cols["isin"]]), cmp_ps)
+                div_y, div_r, cagr = fetch_dividend_and_cagr(stock_name, str(row[isin_col]), cmp_ps)
                 div_yields.append(div_y)
                 div_rupees_list.append(div_r)
                 cagr_list.append(cagr)
@@ -993,7 +1011,7 @@ def main():
 
             editable_cols = [
                 namecol,
-                cols["isin"],
+                isin_col,
                 qcol,
                 invcol,
                 cmpcol,
@@ -1063,7 +1081,7 @@ def main():
                 st.markdown("#### 📋 Detailed Results with Strength")
                 show_cols = [
                     namecol,
-                    cols["isin"],
+                    isin_col,
                     qcol,
                     invcol,
                     cmpcol,
@@ -1075,7 +1093,7 @@ def main():
                 ]
                 df_show = df2[show_cols].rename(columns={
                     namecol: "Stock Name",
-                    cols["isin"]: "ISIN",
+                    isin_col: "ISIN",
                     qcol: "Quantity",
                     invcol: "Total Investment",
                     cmpcol: "Total CMP",
