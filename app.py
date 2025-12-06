@@ -83,7 +83,7 @@ st.markdown("""
         --bg-main: #f3f4f6;          /* light gray */
         --bg-header-from: #4f46e5;   /* indigo-600 */
         --bg-header-to: #0ea5e9;     /* sky-500 */
-        --bg-card: #0f172a;          /* slate-900 */
+        --bg-card: #ffffff;          /* slate-900 */
         --border-card: #1e293b;      /* slate-800 */
         --accent: #22c55e;           /* green-500 */
         --accent-soft: #bbf7d0;      /* green-100 */
@@ -91,7 +91,8 @@ st.markdown("""
         --nav-bg-hover: #4f46e5;     /* indigo-600 */
         --nav-bg-active: #4338ca;    /* indigo-700 */
         --nav-text: #111827;         /* gray-900 */
-        --nav-text-active: #ffffff;  /* white */
+        --nav-text-active: #0f172a;  /* white */
+    }
     }
 
     .stApp {
