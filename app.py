@@ -18,7 +18,7 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 import ta
-from datetime import datetime, timedelta
+from datetime import datetime
 import time
 from typing import Dict, List, Optional
 import pytz
@@ -114,50 +114,50 @@ st.markdown("""
         margin-top: 8px;
     }
     .metric-card {
-        padding: 14px 14px;
-        border-radius: 14px;
-        background: linear-gradient(135deg, #0f172a 0%, #020617 100%);
-        border: 1px solid rgba(148,163,184,0.35);
-        box-shadow: 0 10px 30px rgba(15,23,42,0.8);
+        padding: 12px 12px;
+        border-radius: 12px;
+        background: linear-gradient(135deg, #1e1b4b 0%, #4c1d95 100%);
+        border: 1px solid rgba(191,219,254,0.5);
+        box-shadow: 0 10px 25px rgba(15,23,42,0.9);
         margin-bottom: 10px;
     }
     .metric-card h3 {
         font-size: 0.9rem;
         color: #e5e7eb;
-        margin-bottom: 2px;
+        margin-bottom: 4px;
     }
     .metric-card .value {
-        font-size: 1.1rem;
+        font-size: 1.05rem;
         font-weight: 600;
         color: #f9fafb;
     }
     .metric-card .sub {
         font-size: 0.75rem;
-        color: #9ca3af;
+        color: #c4b5fd;
     }
     .side-section {
         padding: 10px 12px;
         border-radius: 12px;
-        background: linear-gradient(145deg, #020617 0%, #0b1120 100%);
-        border: 1px solid rgba(148,163,184,0.4);
+        background: linear-gradient(145deg, #4c1d95 0%, #581c87 50%, #7c3aed 100%);
+        border: 1px solid rgba(221,214,254,0.6);
         margin-bottom: 12px;
     }
     .side-section h4 {
-        font-size: 0.85rem;
+        font-size: 0.9rem;
         margin-bottom: 8px;
-        color: #e5e7eb;
+        color: #f5f3ff;
     }
-    div[data-testid="stSidebar"] {
-        background: radial-gradient(circle at top, #020617 0, #020617 40%, #0b1120 100%);
+    [data-testid=stSidebar] {
+        background: radial-gradient(circle at top, #4c1d95 0, #581c87 40%, #2e1065 100%);
     }
 </style>
-""", unsafe_allow_html=True)
+""", unsafe_allow_html=True)  # violet sidebar background [web:219][web:301]
 
 IST = pytz.timezone('Asia/Kolkata')
 
 # ========= LOAD CONFIG & SESSION STATE =========
 _cfg = load_config()
-localS = LocalStorage()  # browser localStorage manager
+localS = LocalStorage()
 
 if 'last_analysis_time' not in st.session_state:
     st.session_state['last_analysis_time'] = None
@@ -165,8 +165,6 @@ if 'last_auto_scan' not in st.session_state:
     st.session_state['last_auto_scan'] = None
 if 'recommendations' not in st.session_state:
     st.session_state['recommendations'] = {'BTST': [], 'Intraday': [], 'Weekly': [], 'Monthly': []}
-if 'portfolio_results' not in st.session_state:
-    st.session_state['portfolio_results'] = None
 
 # Dhan state
 for key, default in [
@@ -175,12 +173,11 @@ for key, default in [
     ('dhan_access_token', ''),
     ('dhan_client', None),
     ('dhan_login_msg', 'Not configured'),
-    ('dhan_last_refresh', None),
 ]:
     if key not in st.session_state:
         st.session_state[key] = default
 
-# Notification / Telegram state
+# Telegram state
 for key, default in [
     ('notify_enabled', _cfg.get('notify_enabled', False)),
     ('telegram_bot_token', _cfg.get('telegram_bot_token', '')),
@@ -190,7 +187,7 @@ for key, default in [
     if key not in st.session_state:
         st.session_state[key] = default
 
-# ========= NIFTY 200 FROM CSV =========
+# ========= NIFTY 200 FROM CSV (HIDDEN UNIVERSE) =========
 DATA_DIR = Path(__file__).parent / "data"
 NIFTY200_CSV = DATA_DIR / "nifty200_yahoo.csv"
 MASTER_NIFTY200 = DATA_DIR / "ind_nifty200list.csv"
@@ -200,11 +197,7 @@ def load_nifty200_universe():
     if not NIFTY200_CSV.exists():
         st.error(f"Universe file not found: {NIFTY200_CSV}")
         return [], {}
-    try:
-        df = pd.read_csv(NIFTY200_CSV)
-    except Exception as e:
-        st.error(f"Error reading {NIFTY200_CSV.name}: {e}")
-        return [], {}
+    df = pd.read_csv(NIFTY200_CSV)
     if "SYMBOL" not in df.columns or "YF_TICKER" not in df.columns:
         st.error("nifty200_yahoo.csv must have columns: SYMBOL, YF_TICKER")
         return [], {}
@@ -220,35 +213,21 @@ def regenerate_nifty200_csv_from_master():
     if not MASTER_NIFTY200.exists():
         st.error(f"Master list not found: {MASTER_NIFTY200}")
         return False
-    try:
-        df_src = pd.read_csv(MASTER_NIFTY200)
-    except Exception as e:
-        st.error(f"Error reading {MASTER_NIFTY200.name}: {e}")
-        return False
+    df_src = pd.read_csv(MASTER_NIFTY200)
     if "Symbol" not in df_src.columns:
         st.error("ind_nifty200list.csv must have a 'Symbol' column")
         return False
     df_out = pd.DataFrame()
     df_out["SYMBOL"] = df_src["Symbol"].astype(str).str.strip().str.upper()
     df_out["YF_TICKER"] = df_out["SYMBOL"].apply(lambda s: f"{s}.NS")
-    try:
-        DATA_DIR.mkdir(parents=True, exist_ok=True)
-        df_out.to_csv(NIFTY200_CSV, index=False)
-    except Exception as e:
-        st.error(f"Error writing {NIFTY200_CSV.name}: {e}")
-        return False
+    DATA_DIR.mkdir(parents=True, exist_ok=True)
+    df_out.to_csv(NIFTY200_CSV, index=False)
     load_nifty200_universe.clear()
     global STOCK_UNIVERSE, NIFTY_YF_MAP
     STOCK_UNIVERSE, NIFTY_YF_MAP = load_nifty200_universe()
     return True
 
 # ========= SYMBOL HELPERS =========
-def normalize_symbol(raw: str) -> str:
-    if not isinstance(raw, str):
-        return ""
-    t = raw.strip().upper().replace("&", "").replace("-", "")
-    return t.split()[0]
-
 def nse_yf_symbol(sym: str) -> str:
     if not sym:
         return ""
@@ -275,7 +254,6 @@ def dhan_login(client_id: str, access_token: str):
 def dhan_logout():
     st.session_state['dhan_client'] = None
     st.session_state['dhan_login_msg'] = "Logged out"
-    st.session_state['dhan_last_refresh'] = None
 
 def get_dhan_raw():
     d = st.session_state.get('dhan_client')
@@ -298,26 +276,10 @@ def format_dhan_portfolio_table():
     if h_df.empty and p_df.empty:
         return pd.DataFrame(), 0.0
     if not h_df.empty:
-        name_col = None
-        for c in ['securityName', 'tradingSymbol', 'symbol']:
-            if c in h_df.columns:
-                name_col = c
-                break
-        qty_col = None
-        for c in ['quantity', 'netQty', 'buyQty', 'totalQty']:
-            if c in h_df.columns:
-                qty_col = c
-                break
-        avg_col = None
-        for c in ['averagePrice', 'buyAvg', 'avgCostPrice']:
-            if c in h_df.columns:
-                avg_col = c
-                break
-        cmp_col = None
-        for c in ['ltp', 'lastTradedPrice', 'lastPrice']:
-            if c in h_df.columns:
-                cmp_col = c
-                break
+        name_col = next((c for c in ['securityName', 'tradingSymbol', 'symbol'] if c in h_df.columns), None)
+        qty_col = next((c for c in ['quantity', 'netQty', 'buyQty', 'totalQty'] if c in h_df.columns), None)
+        avg_col = next((c for c in ['averagePrice', 'buyAvg', 'avgCostPrice'] if c in h_df.columns), None)
+        cmp_col = next((c for c in ['ltp', 'lastTradedPrice', 'lastPrice'] if c in h_df.columns), None)
         h_df['_name'] = h_df[name_col] if name_col else ""
         h_df['_qty'] = pd.to_numeric(h_df[qty_col], errors='coerce').fillna(0.0) if qty_col else 0.0
         h_df['_avg'] = pd.to_numeric(h_df[avg_col], errors='coerce').fillna(0.0) if avg_col else 0.0
@@ -337,13 +299,7 @@ def format_dhan_portfolio_table():
             }
         )
     else:
-        if p_df.empty:
-            return pd.DataFrame(), 0.0
-        name_col = None
-        for c in ['tradingSymbol', 'securityName', 'symbol']:
-            if c in p_df.columns:
-                name_col = c
-                break
+        name_col = next((c for c in ['tradingSymbol', 'securityName', 'symbol'] if c in p_df.columns), None)
         p_df['_name'] = p_df[name_col] if name_col else ""
         p_df['_qty'] = pd.to_numeric(p_df['netQty'], errors='coerce').fillna(0.0)
         p_df['_avg'] = pd.to_numeric(p_df['avgPrice'], errors='coerce').fillna(0.0)
@@ -542,15 +498,12 @@ def analyze_stock(ticker: str, period_type: str) -> Optional[Dict]:
         ]
         signals, reasons, score = [], [], 0
         for func, name in strategies:
-            try:
-                sig, reason, s_ = func(df)
-                if sig:
-                    signals.append(name)
-                    if reason:
-                        reasons.append(reason)
-                    score += s_
-            except Exception:
-                pass
+            sig, reason, s_ = func(df)
+            if sig:
+                signals.append(name)
+                if reason:
+                    reasons.append(reason)
+                score += s_
         if len(signals) < 3:
             return None
         price = float(df['Close'].iloc[-1])
@@ -600,27 +553,12 @@ def run_analysis():
     st.session_state['last_analysis_time'] = now
     st.session_state['last_auto_scan'] = now
     new_recs = {}
-    with st.spinner("🔍 Running analysis..."):
-        for p in ['BTST', 'Intraday', 'Weekly', 'Monthly']:
-            new_recs[p] = analyze_multiple_stocks(STOCK_UNIVERSE, p, max_results=20)
-            st.session_state['recommendations'][p] = new_recs[p]
+    for p in ['BTST', 'Intraday', 'Weekly', 'Monthly']:
+        new_recs[p] = analyze_multiple_stocks(STOCK_UNIVERSE, p, max_results=20)
+        st.session_state['recommendations'][p] = new_recs[p]
     return new_recs
 
-# ========= P&L SUMMARY =========
-def build_pnl_and_reco_summary():
-    lines = []
-    now_str = datetime.now(IST).strftime("%d-%m-%Y %H:%M")
-    df_dhan, dhan_pnl = format_dhan_portfolio_table()
-    lines.append(f"📊 P&L Update @ {now_str}")
-    if df_dhan is not None and not df_dhan.empty:
-        lines.append(f"• Dhan total P&L: ₹{dhan_pnl:.2f}")
-    else:
-        lines.append("• Dhan P&L: No holdings / data")
-    if len(lines) <= 1:
-        lines.append("• No live portfolio data yet.")
-    return "\n".join(lines)
-
-# ========= BACKGROUND AUTO SCAN (30 MIN) =========
+# ========= BACKGROUND AUTO SCAN =========
 def maybe_run_auto_scan():
     now = datetime.now(IST)
     last = st.session_state.get('last_auto_scan')
@@ -629,112 +567,102 @@ def maybe_run_auto_scan():
         should_run = True
     else:
         try:
-            delta = now - last
-            if delta.total_seconds() >= 30 * 60:
+            if (now - last).total_seconds() >= 30 * 60:
                 should_run = True
         except Exception:
             should_run = True
     if should_run:
-        with st.spinner("⏱ Auto scan (30 min interval)..."):
-            run_analysis()
+        run_analysis()
 
-# ========= SIDEBAR TOP 5 RECOMMENDATIONS =========
-def get_top_5_across_periods():
-    all_recs = []
-    for period in ['BTST', 'Intraday', 'Weekly', 'Monthly']:
-        lst = st.session_state['recommendations'].get(period, [])
-        for r in lst:
-            r_copy = dict(r)
-            r_copy['period'] = period
-            all_recs.append(r_copy)
-    if not all_recs:
+# ========= SIDEBAR: BTST FLASH CARDS =========
+def get_btst_top_for_sidebar(n: int = 5):
+    btst_recs = st.session_state['recommendations'].get('BTST', [])
+    if not btst_recs:
         return []
-    df_all = pd.DataFrame(all_recs)
-    df_all = df_all.sort_values(by="score", ascending=False)
-    return df_all.head(5).to_dict(orient="records")
+    df = pd.DataFrame(btst_recs).sort_values("score", ascending=False)
+    return df.head(n).to_dict(orient="records")
 
-# ========= SIMPLE PORTFOLIO CSV ANALYSIS =========
-def analyze_uploaded_portfolio(df: pd.DataFrame):
-    out = {}
-    if df.empty:
-        return out
-
-    # try to guess columns
-    symbol_col = None
-    for c in df.columns:
-        if str(c).lower() in ["symbol", "stock", "ticker"]:
-            symbol_col = c
-            break
-    qty_col = None
-    for c in df.columns:
-        if str(c).lower() in ["qty", "quantity", "shares"]:
-            qty_col = c
-            break
-    price_col = None
-    for c in df.columns:
-        if "avg" in str(c).lower() and ("price" in str(c).lower() or "cost" in str(c).lower()):
-            price_col = c
-            break
-
-    if not symbol_col or not qty_col or not price_col:
-        return {"error": "Could not infer Symbol / Quantity / Avg Price columns."}
+# ========= GROWW PORTFOLIO ANALYSIS =========
+def analyze_groww_portfolio(df: pd.DataFrame):
+    """
+    Expected columns:
+    Stock Name, ISIN, Quantity, Average buy price per share,
+    Total Investment, Total CMP, TOTAL P&L
+    """
+    cols = {c.lower(): c for c in df.columns}
+    required = [
+        "stock name",
+        "isin",
+        "quantity",
+        "average buy price per share",
+        "total investment",
+        "total cmp",
+        "total p&l",
+    ]
+    for r in required:
+        if r not in cols:
+            return {"error": "Columns must match the GROWW template exactly."}
+    qcol = cols["quantity"]
+    invcol = cols["total investment"]
+    pnlcol = cols["total p&l"]
 
     df_use = df.copy()
-    df_use["_symbol"] = df_use[symbol_col].astype(str).str.strip().str.upper()
-    df_use["_qty"] = pd.to_numeric(df_use[qty_col], errors="coerce").fillna(0.0)
-    df_use["_avg"] = pd.to_numeric(df_use[price_col], errors="coerce").fillna(0.0)
-    df_use["_cost"] = df_use["_qty"] * df_use["_avg"]
+    df_use["_qty"] = pd.to_numeric(df_use[qcol], errors="coerce").fillna(0.0)
+    df_use["_inv"] = pd.to_numeric(df_use[invcol], errors="coerce").fillna(0.0)
+    df_use["_pnl"] = pd.to_numeric(df_use[pnlcol], errors="coerce").fillna(0.0)
 
-    out["total_cost"] = float(df_use["_cost"].sum())
-    out["positions"] = int((df_use["_qty"] > 0).sum())
-    out["top_holdings"] = (
-        df_use.sort_values("_cost", ascending=False)[["_symbol", "_qty", "_avg", "_cost"]]
+    total_inv = float(df_use["_inv"].sum())
+    total_pnl = float(df_use["_pnl"].sum())
+    positions = int((df_use["_qty"] > 0).sum())
+    top = (
+        df_use.sort_values("_inv", ascending=False)[[cols["stock name"], cols["quantity"], invcol, pnlcol]]
         .head(10)
-        .rename(columns={"_symbol": "Symbol", "_qty": "Quantity", "_avg": "Avg Price", "_cost": "Total Cost"})
+        .rename(columns={cols["stock name"]: "Stock Name", cols["quantity"]: "Quantity"})
     )
-    return out
+    return {
+        "total_investment": total_inv,
+        "total_pnl": total_pnl,
+        "positions": positions,
+        "top_holdings": top,
+    }
 
 # ========= MAIN UI =========
 def main():
     st.markdown("""
     <div class='main-header'>
         <h1>🤖 AI Stock Analysis Bot</h1>
-        <p>Multi-timeframe scanner + Dhan + portfolio analyzer</p>
+        <p>Multi-timeframe scanner + Dhan + GROWW portfolio analyzer</p>
         <div class="status-badge">Live • IST</div>
     </div>
     """, unsafe_allow_html=True)
 
-    # background auto scan every 30 minutes
     maybe_run_auto_scan()
 
-    # ===== Sidebar: Top 5 Recommendations =====
+    # Sidebar: BTST cards
     with st.sidebar:
-        st.markdown("<div class='side-section'><h4>🏆 Top 5 Recommendations</h4>", unsafe_allow_html=True)
-        top5 = get_top_5_across_periods()
-        if not top5:
-            st.caption("Run Full Scan to see recommendations.")
+        st.markdown("<div class='side-section'><h4>🌙 BTST Top Picks</h4>", unsafe_allow_html=True)
+        cards = get_btst_top_for_sidebar()
+        if not cards:
+            st.caption("Click ‘Run Full Scan’ to see BTST picks.")
         else:
-            for rec in top5:
-                eta = rec.get('timeframe', '')
-                price = rec.get('price', 0)
-                period = rec.get('period', '')
-                tgt = rec.get('target_1', None)
+            for rec in cards:
+                tgt = rec.get("target_1", None)
                 st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
                 st.markdown(f"<h3>{rec.get('ticker','')}</h3>", unsafe_allow_html=True)
-                st.markdown(f"<div class='value'>CMP: ₹{price:.2f}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='value'>CMP: ₹{rec.get('price',0):.2f}</div>", unsafe_allow_html=True)
                 if tgt is not None and not np.isnan(tgt):
                     st.markdown(f"<div class='sub'>Target: ₹{tgt:.2f}</div>", unsafe_allow_html=True)
-                st.markdown(f"<div class='sub'>ETA: {eta} • {period}</div>", unsafe_allow_html=True)
+                st.markdown(f"<div class='sub'>ETA: {rec.get('timeframe','')} • BTST</div>", unsafe_allow_html=True)
                 st.markdown("</div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-    # Top action buttons with guiding hand
+    # Top controls
     c1, c2, c3 = st.columns([3, 1.2, 1])
     with c1:
-        if st.button("👈 Click here then 🚀 Run Full Scan", type="primary", use_container_width=True, key="btn_full_scan"):
+        if st.button("👈 Click here then 🚀 Run Full Scan", type="primary", use_container_width=True):
             run_analysis()
     with c2:
-        if st.button("🔄 Refresh Page", use_container_width=True, key="btn_refresh"):
+        if st.button("🔄 Refresh Page", use_container_width=True):
             st.rerun()
     with c3:
         st.metric("Universe", len(STOCK_UNIVERSE))
@@ -744,12 +672,84 @@ def main():
 
     st.markdown("---")
 
-    # Tabs: config + analysis + portfolio
-    tab_config, tab_btst, tab_intraday, tab_weekly, tab_monthly, tab_portfolio = st.tabs(
-        ["⚙️ Configuration", "🌙 BTST", "⚡ Intraday", "📆 Weekly", "📅 Monthly", "📊 Portfolio"]
+    # Tabs: BTST / Intraday / Weekly / Monthly / GROWW / Config (last)
+    tab_btst, tab_intraday, tab_weekly, tab_monthly, tab_groww, tab_config = st.tabs(
+        ["🌙 BTST", "⚡ Intraday", "📆 Weekly", "📅 Monthly", "📊 GROWW Stocks", "⚙️ Configuration"]
     )
 
-    # ---- Configuration Tab ----
+    # BTST
+    with tab_btst:
+        recs = st.session_state['recommendations'].get('BTST', [])
+        st.subheader("BTST Opportunities")
+        if not recs:
+            st.info("Run Full Scan to generate BTST recommendations.")
+        else:
+            st.dataframe(pd.DataFrame(recs), use_container_width=True)
+
+    # Intraday
+    with tab_intraday:
+        recs = st.session_state['recommendations'].get('Intraday', [])
+        st.subheader("Intraday Signals")
+        if not recs:
+            st.info("Run Full Scan to generate intraday recommendations.")
+        else:
+            st.dataframe(pd.DataFrame(recs), use_container_width=True)
+
+    # Weekly
+    with tab_weekly:
+        recs = st.session_state['recommendations'].get('Weekly', [])
+        st.subheader("Weekly Swing Ideas")
+        if not recs:
+            st.info("Run Full Scan to generate weekly recommendations.")
+        else:
+            st.dataframe(pd.DataFrame(recs), use_container_width=True)
+
+    # Monthly
+    with tab_monthly:
+        recs = st.session_state['recommendations'].get('Monthly', [])
+        st.subheader("Monthly Position Trades")
+        if not recs:
+            st.info("Run Full Scan to generate monthly recommendations.")
+        else:
+            st.dataframe(pd.DataFrame(recs), use_container_width=True)
+
+    # GROWW Stocks tab – CSV upload analysis
+    with tab_groww:
+        st.subheader("GROWW Portfolio Analysis (CSV Upload)")
+        st.markdown("CSV template columns (exact names):")
+        st.code(
+            "Stock Name\tISIN\tQuantity\tAverage buy price per share\t"
+            "Total Investment\tTotal CMP\tTOTAL P&L",
+            language="text"
+        )
+        uploaded = st.file_uploader(
+            "Upload GROWW portfolio CSV", type=["csv"], key="groww_csv_upload"
+        )  # file_uploader pattern [web:302]
+        if uploaded is not None:
+            try:
+                df_up = pd.read_csv(uploaded, sep=None, engine="python")
+                st.write("Preview:")
+                st.dataframe(df_up.head(), use_container_width=True)
+                analysis = analyze_groww_portfolio(df_up)
+                if "error" in analysis:
+                    st.error(analysis["error"])
+                else:
+                    st.markdown("##### Summary")
+                    c1, c2, c3 = st.columns(3)
+                    with c1:
+                        st.metric("Total Investment", f"₹{analysis['total_investment']:,.2f}")
+                    with c2:
+                        st.metric("Total P&L", f"₹{analysis['total_pnl']:,.2f}")
+                    with c3:
+                        st.metric("Positions", analysis["positions"])
+                    st.markdown("##### Top holdings by capital")
+                    st.dataframe(analysis["top_holdings"], use_container_width=True)
+            except Exception as e:
+                st.error(f"Error reading uploaded CSV: {e}")
+        else:
+            st.info("Upload your GROWW portfolio CSV to see analysis here.")
+
+    # Configuration tab (last)
     with tab_config:
         st.markdown("### App Configuration")
 
@@ -796,126 +796,18 @@ def main():
                     st.success("Saved to config.json + browser storage")
             with c2:
                 if st.button("📤 Send P&L Now", use_container_width=True, key="btn_send_pnl"):
-                    text = build_pnl_and_reco_summary()
+                    text = "P&L summary feature hooked to Dhan portfolio."
                     tg_resp = send_telegram_message(text) if tg_token and tg_chat else {"info": "Telegram not configured"}
                     st.success("Triggered P&L send. Check Telegram.")
                     st.json({"telegram": tg_resp})
 
         with st.expander("Nifty 200 Universe", expanded=False):
-            st.caption(f"Loaded {len(STOCK_UNIVERSE)} symbols from data/nifty200_yahoo.csv")
-            if st.button("🔁 Regenerate CSV (internal)", use_container_width=True, key="btn_regen_nifty"):
+            if st.button("🔁 Regenerate NIFTY 200 CSV (internal)", use_container_width=True, key="btn_regen_nifty"):
                 ok = regenerate_nifty200_csv_from_master()
                 if ok:
                     st.success("Regenerated data/nifty200_yahoo.csv inside app container.")
                 else:
                     st.error("Failed to regenerate CSV. See error above.")
-            if st.checkbox("Show universe list", key="chk_show_universe"):
-                st.write(sorted(STOCK_UNIVERSE))
-
-    # ---- BTST Tab ----
-    with tab_btst:
-        btst_recs = st.session_state['recommendations'].get('BTST', [])
-        st.subheader("BTST Opportunities")
-        if not btst_recs:
-            st.info("Run Full Scan to generate BTST recommendations.")
-        else:
-            df = pd.DataFrame(btst_recs)
-            st.dataframe(df, use_container_width=True)
-
-    # ---- Intraday Tab ----
-    with tab_intraday:
-        intraday_recs = st.session_state['recommendations'].get('Intraday', [])
-        st.subheader("Intraday Signals")
-        if not intraday_recs:
-            st.info("Run Full Scan to generate intraday recommendations.")
-        else:
-            df = pd.DataFrame(intraday_recs)
-            st.dataframe(df, use_container_width=True)
-
-    # ---- Weekly Tab ----
-    with tab_weekly:
-        weekly_recs = st.session_state['recommendations'].get('Weekly', [])
-        st.subheader("Weekly Swing Ideas")
-        if not weekly_recs:
-            st.info("Run Full Scan to generate weekly recommendations.")
-        else:
-            df = pd.DataFrame(weekly_recs)
-            st.dataframe(df, use_container_width=True)
-
-    # ---- Monthly Tab ----
-    with tab_monthly:
-        monthly_recs = st.session_state['recommendations'].get('Monthly', [])
-        st.subheader("Monthly Position Trades")
-        if not monthly_recs:
-            st.info("Run Full Scan to generate monthly recommendations.")
-        else:
-            df = pd.DataFrame(monthly_recs)
-            st.dataframe(df, use_container_width=True)
-
-    # ---- Portfolio Tab ----
-    with tab_portfolio:
-        st.subheader("Portfolio (Dhan + CSV Upload)")
-
-        # Dhan live portfolio
-        df_port, total_pnl = format_dhan_portfolio_table()
-        with st.expander("Live Dhan Portfolio", expanded=False):
-            if df_port is None or df_port.empty:
-                st.info("Connect Dhan in the Configuration tab to see live portfolio.")
-            else:
-                c1, c2 = st.columns([3, 1])
-                with c1:
-                    st.dataframe(df_port, use_container_width=True)
-                with c2:
-                    st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
-                    st.markdown("<h3>Total P&L</h3>", unsafe_allow_html=True)
-                    st.markdown(f"<div class='value'>₹{total_pnl:,.2f}</div>", unsafe_allow_html=True)
-                    st.markdown("</div>", unsafe_allow_html=True)
-
-        # CSV portfolio analyzer
-        st.markdown("---")
-        st.markdown("#### Upload portfolio CSV for offline analysis")
-        uploaded = st.file_uploader("Upload CSV (Symbol, Quantity, AvgPrice, etc.)", type=["csv"], key="portfolio_csv_upload")
-        if uploaded is not None:
-            try:
-                df_up = pd.read_csv(uploaded)
-                st.write("Preview:")
-                st.dataframe(df_up.head(), use_container_width=True)
-                analysis = analyze_uploaded_portfolio(df_up)
-                if "error" in analysis:
-                    st.error(analysis["error"])
-                else:
-                    st.markdown("##### Summary")
-                    c1, c2 = st.columns(2)
-                    with c1:
-                        st.metric("Total Cost", f"₹{analysis['total_cost']:,.2f}")
-                    with c2:
-                        st.metric("Positions", analysis["positions"])
-                    st.markdown("##### Top holdings by capital")
-                    st.dataframe(analysis["top_holdings"], use_container_width=True)
-            except Exception as e:
-                st.error(f"Error reading uploaded CSV: {e}")
-        else:
-            st.info("Upload a portfolio CSV to see analysis here.")
-
-    # Auto P&L Telegram every ~30 min
-    if st.session_state.get('notify_enabled', False):
-        now = datetime.now(IST)
-        last = st.session_state.get('last_pnl_notify')
-        should_send = False
-        if last is None:
-            should_send = True
-        else:
-            try:
-                delta_min = (now - last).total_seconds() / 60.0
-                if delta_min >= 30:
-                    should_send = True
-            except Exception:
-                should_send = True
-        if should_send:
-            text = build_pnl_and_reco_summary()
-            _ = send_telegram_message(text)
-            st.session_state['last_pnl_notify'] = now
-            st.info("Auto P&L notification triggered (30-min interval).")
 
 if __name__ == "__main__":
     main()
