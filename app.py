@@ -26,32 +26,7 @@ import requests
 import os
 import json
 
-from streamlit_local_storage import LocalStorage  # browser localStorage helper[web:167][web:170]
-
-# Shoonya (Finvasia) – robust import using norenrestapipy
-NorenApi = None
-_shoonya_import_msg = "Not imported"
-
-def _probe_shoonya_import():
-    global NorenApi, _shoonya_import_msg
-    try:
-        # Path used by norenrestapipy 0.0.22
-        from norenrestapipy.NorenApi import NorenApi as _N1  # type: ignore[web:131][web:152]
-        NorenApi = _N1
-        _shoonya_import_msg = "Imported from norenrestapipy.NorenApi"
-        return
-    except Exception as e1:
-        try:
-            # Fallback – older casing
-            from NorenRestApiPy.NorenApi import NorenApi as _N2  # type: ignore
-            NorenApi = _N2
-            _shoonya_import_msg = "Imported from NorenRestApiPy.NorenApi"
-            return
-        except Exception as e2:
-            NorenApi = None
-            _shoonya_import_msg = f"Shoonya import failed: {e1} | {e2}"
-
-_probe_shoonya_import()
+from streamlit_local_storage import LocalStorage  # browser localStorage helper
 
 # Dhan
 try:
@@ -63,10 +38,6 @@ except ImportError:
 CONFIG_FILE = "config.json"
 
 DEFAULT_CONFIG = {
-    "shoonya_user_id": "",
-    "shoonya_password": "",
-    "shoonya_vendor_code": "",
-    "shoonya_api_key": "",
     "dhan_client_id": "",
     "telegram_bot_token": "",
     "telegram_chat_id": "",
@@ -87,10 +58,6 @@ def load_config():
 
 def save_config_from_state():
     cfg = {
-        "shoonya_user_id": st.session_state.get("shoonya_user_id", ""),
-        "shoonya_password": st.session_state.get("shoonya_password", ""),
-        "shoonya_vendor_code": st.session_state.get("shoonya_vendor_code", ""),
-        "shoonya_api_key": st.session_state.get("shoonya_api_key", ""),
         "dhan_client_id": st.session_state.get("dhan_client_id", ""),
         "telegram_bot_token": st.session_state.get("telegram_bot_token", ""),
         "telegram_chat_id": st.session_state.get("telegram_chat_id", ""),
@@ -188,7 +155,7 @@ IST = pytz.timezone('Asia/Kolkata')
 
 # ========= LOAD CONFIG & SESSION STATE =========
 _cfg = load_config()
-localS = LocalStorage()  # browser localStorage manager[web:170]
+localS = LocalStorage()  # browser localStorage manager
 
 # Server-side base state
 if 'last_analysis_time' not in st.session_state:
@@ -197,22 +164,6 @@ if 'recommendations' not in st.session_state:
     st.session_state['recommendations'] = {'BTST': [], 'Intraday': [], 'Weekly': [], 'Monthly': []}
 if 'portfolio_results' not in st.session_state:
     st.session_state['portfolio_results'] = None
-
-# Shoonya state
-for key, default in [
-    ('shoonya_enabled', False),
-    ('shoonya_user_id', _cfg.get('shoonya_user_id', '')),
-    ('shoonya_password', _cfg.get('shoonya_password', '')),
-    ('shoonya_twofa', ''),
-    ('shoonya_vendor_code', _cfg.get('shoonya_vendor_code', '')),
-    ('shoonya_api_key', _cfg.get('shoonya_api_key', '')),
-    ('shoonya_api_obj', None),
-    ('shoonya_logged_in', False),
-    ('shoonya_login_msg', f'Not logged in ({_shoonya_import_msg})'),
-    ('shoonya_last_refresh', None),
-]:
-    if key not in st.session_state:
-        st.session_state[key] = default
 
 # Dhan state
 for key, default in [
@@ -296,121 +247,6 @@ def nse_yf_symbol(sym: str) -> str:
     if s in NIFTY_YF_MAP:
         return NIFTY_YF_MAP[s]
     return s if s.endswith(".NS") else f"{s}.NS"
-
-# ========= SHOONYA HELPERS =========
-def running_on_streamlit_cloud() -> bool:
-    return os.path.exists("/mount")
-
-def shoonya_login(user_id: str, password: str, twofa: str, vendor_code: str, api_key: str):
-    global NorenApi, _shoonya_import_msg
-    if running_on_streamlit_cloud():
-        st.session_state['shoonya_logged_in'] = False
-        st.session_state['shoonya_login_msg'] = (
-            "Shoonya live trading is disabled on Streamlit Cloud. "
-            "Run this app locally for Shoonya orders."
-        )
-        return
-    if NorenApi is None:
-        st.session_state['shoonya_logged_in'] = False
-        st.session_state['shoonya_login_msg'] = f"NorenRestApiPy import failed: {_shoonya_import_msg}"
-        return
-    try:
-        api = NorenApi(
-            host="https://api.shoonya.com/NorenWClientTP/",
-            websocket="wss://api.shoonya.com/NorenWSTP/"
-        )
-        ret = api.login(
-            userid=user_id,
-            password=password,
-            twoFA=twofa,
-            vendor_code=vendor_code,
-            api_secret=api_key,
-            imei="streamlit-app"
-        )
-        if ret and ret.get("stat") == "Ok":
-            st.session_state['shoonya_api_obj'] = api
-            st.session_state['shoonya_logged_in'] = True
-            st.session_state['shoonya_login_msg'] = "✅ Logged in to Shoonya"
-        else:
-            st.session_state['shoonya_logged_in'] = False
-            st.session_state['shoonya_login_msg'] = f"❌ Login failed: {ret}"
-    except Exception as e:
-        st.session_state['shoonya_logged_in'] = False
-        st.session_state['shoonya_login_msg'] = f"❌ Login error: {e}"
-
-def shoonya_logout():
-    api = st.session_state.get('shoonya_api_obj')
-    if api:
-        try:
-            api.logout()
-        except Exception:
-            pass
-    st.session_state['shoonya_api_obj'] = None
-    st.session_state['shoonya_logged_in'] = False
-    st.session_state['shoonya_login_msg'] = "Logged out"
-    st.session_state['shoonya_last_refresh'] = None
-
-def get_shoonya_positions_df():
-    api = st.session_state.get('shoonya_api_obj')
-    if not api or not st.session_state.get('shoonya_logged_in', False):
-        return pd.DataFrame()
-    try:
-        positions = api.get_positions()
-    except Exception:
-        positions = []
-    return pd.DataFrame(positions) if isinstance(positions, list) else pd.DataFrame()
-
-def format_shoonya_positions_table():
-    p_df = get_shoonya_positions_df()
-    if p_df.empty:
-        return pd.DataFrame(), 0.0
-    name_col = 'tsym' if 'tsym' in p_df.columns else None
-    if not name_col or 'netqty' not in p_df.columns or 'netavgprc' not in p_df.columns or 'lp' not in p_df.columns:
-        return pd.DataFrame(), 0.0
-    p_df['_name'] = p_df[name_col]
-    p_df['_qty'] = pd.to_numeric(p_df['netqty'], errors='coerce').fillna(0.0)
-    p_df['_avg'] = pd.to_numeric(p_df['netavgprc'], errors='coerce').fillna(0.0)
-    p_df['_cmp'] = pd.to_numeric(p_df['lp'], errors='coerce').fillna(0.0)
-    p_df['_total_cost'] = p_df['_qty'] * p_df['_avg']
-    p_df['_total_price'] = p_df['_qty'] * p_df['_cmp']
-    p_df['_pnl'] = p_df['_total_price'] - p_df['_total_cost']
-    portfolio = p_df[['_name', '_qty', '_avg', '_total_cost', '_cmp', '_total_price', '_pnl']].rename(
-        columns={
-            '_name': 'Stock',
-            '_qty': 'Quantity',
-            '_avg': 'Avg Cost',
-            '_total_cost': 'Total Cost',
-            '_cmp': 'CMP',
-            '_total_price': 'Total Value',
-            '_pnl': 'P&L'
-        }
-    )
-    total_pnl = float(portfolio['P&L'].sum())
-    return portfolio, total_pnl
-
-def shoonya_place_market_order(tsym: str, qty: int, side: str, product: str = 'C'):
-    if running_on_streamlit_cloud():
-        return {"stat": "Not_Ok", "emsg": "Shoonya orders disabled on Streamlit Cloud. Run locally."}
-    api = st.session_state.get('shoonya_api_obj')
-    if not api or not st.session_state.get('shoonya_logged_in', False):
-        return {"stat": "Not_Ok", "emsg": "Shoonya not logged in"}
-    trantype = 'B' if side.upper() == 'BUY' else 'S'
-    try:
-        ret = api.place_order(
-            buy_or_sell=trantype,
-            product_type=product,
-            exchange='NSE',
-            tradingsymbol=tsym,
-            quantity=str(qty),
-            discloseqty='0',
-            price_type='MKT',
-            price='0',
-            retention='DAY',
-            remarks='AI_BOT'
-        )
-        return ret
-    except Exception as e:
-        return {"stat": "Not_Ok", "emsg": str(e)}
 
 # ========= DHAN HELPERS =========
 def dhan_login(client_id: str, access_token: str):
@@ -533,7 +369,7 @@ def send_telegram_message(text: str):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-# ========= TA & ANALYSIS (unchanged core) =========
+# ========= TA & ANALYSIS =========
 def safe_extract(df, col):
     if df is None or df.empty or col not in df.columns:
         return pd.Series(dtype=float)
@@ -763,32 +599,22 @@ def run_analysis():
 def build_pnl_and_reco_summary():
     lines = []
     now_str = datetime.now(IST).strftime("%d-%m-%Y %H:%M")
-    df_shoonya, shoonya_pnl = format_shoonya_positions_table()
-    lines.append(f"📊 P&L Update @ {now_str}")
-    if df_shoonya is not None and not df_shoonya.empty:
-        lines.append(f"• Shoonya total P&L: ₹{shoonya_pnl:.2f}")
-    else:
-        lines.append("• Shoonya P&L: No positions / data")
     df_dhan, dhan_pnl = format_dhan_portfolio_table()
+    lines.append(f"📊 P&L Update @ {now_str}")
     if df_dhan is not None and not df_dhan.empty:
         lines.append(f"• Dhan total P&L: ₹{dhan_pnl:.2f}")
     else:
         lines.append("• Dhan P&L: No holdings / data")
-    if len(lines) <= 2:
+    if len(lines) <= 1:
         lines.append("• No live portfolio data yet.")
     return "\n".join(lines)
-
-# ========= CSV ANALYZER HELPERS (same as before, omitted for brevity) =========
-# ... (keep your existing calculate_cagr, compute_cagrs_from_history,
-#     get_dividend_stats, get_price_history, analyze_csv_stock,
-#     analyze_csv_portfolio, portfolio_csv_recommendations exactly as in previous version)
 
 # ========= MAIN UI =========
 def main():
     st.markdown("""
     <div class='main-header'>
         <h1>🤖 AI Stock Analysis Bot</h1>
-        <p>Multi-timeframe scanner + Dhan/Shoonya hooks + deep portfolio analyzer</p>
+        <p>Multi-timeframe scanner + Dhan + deep portfolio analyzer</p>
         <div class="status-badge">Live • IST</div>
     </div>
     """, unsafe_allow_html=True)
@@ -813,51 +639,11 @@ def main():
             st.session_state['last_pnl_notify'] = now
             st.info("Auto P&L notification triggered (30-min interval).")
 
-    # ===== Sidebar with browser-local persistence =====
+    # ===== Sidebar =====
     with st.sidebar:
         st.markdown("<div class='side-section'><h4>⚙️ Configuration</h4>", unsafe_allow_html=True)
-
         if st.session_state['last_analysis_time']:
             st.caption(f"Last Analysis: {st.session_state['last_analysis_time'].strftime('%I:%M %p')}")
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        st.markdown("<div class='side-section'><h4>💼 Shoonya</h4>", unsafe_allow_html=True)
-        # Load from browser localStorage (user-specific) if present[web:170]
-        shoonya_store = localS.getItem("shoonya_config") or {}
-        if shoonya_store:
-            st.session_state['shoonya_user_id'] = shoonya_store.get("user_id", st.session_state['shoonya_user_id'])
-            st.session_state['shoonya_vendor_code'] = shoonya_store.get("vendor_code", st.session_state['shoonya_vendor_code'])
-            st.session_state['shoonya_api_key'] = shoonya_store.get("api_key", st.session_state['shoonya_api_key'])
-
-        se = st.checkbox("Enable Shoonya (local only)", value=st.session_state['shoonya_enabled'])
-        st.session_state['shoonya_enabled'] = se
-        if se:
-            uid = st.text_input("User ID", value=st.session_state['shoonya_user_id'])
-            pwd = st.text_input("Password", value=st.session_state['shoonya_password'], type="password")
-            twofa = st.text_input("OTP / PIN", value=st.session_state['shoonya_twofa'])
-            vendor = st.text_input("Vendor Code", value=st.session_state['shoonya_vendor_code'])
-            appkey = st.text_input("API Key", value=st.session_state['shoonya_api_key'], type="password")
-            st.session_state['shoonya_user_id'] = uid
-            st.session_state['shoonya_password'] = pwd
-            st.session_state['shoonya_twofa'] = twofa
-            st.session_state['shoonya_vendor_code'] = vendor
-            st.session_state['shoonya_api_key'] = appkey
-
-            c1, c2 = st.columns(2)
-            with c1:
-                if st.button("🔑 Login", width="stretch"):
-                    shoonya_login(uid, pwd, twofa, vendor, appkey)
-                    # Save non-sensitive Shoonya fields to browser localStorage
-                    localS.setItem("shoonya_config", {
-                        "user_id": uid,
-                        "vendor_code": vendor,
-                        "api_key": appkey,
-                    })
-            with c2:
-                if st.button("🚪 Logout", width="stretch"):
-                    shoonya_logout()
-            st.caption(st.session_state['shoonya_login_msg'])
         st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown("<div class='side-section'><h4>💼 Dhan</h4>", unsafe_allow_html=True)
@@ -874,11 +660,11 @@ def main():
             st.session_state['dhan_access_token'] = dtoken
             c1, c2 = st.columns(2)
             with c1:
-                if st.button("🔑 Connect", width="stretch"):
+                if st.button("🔑 Connect Dhan", use_container_width=True):
                     dhan_login(dcid, dtoken)
                     localS.setItem("dhan_config", {"client_id": dcid})
             with c2:
-                if st.button("🚪 Logout Dhan", width="stretch"):
+                if st.button("🚪 Logout Dhan", use_container_width=True):
                     dhan_logout()
             st.caption(st.session_state['dhan_login_msg'])
         st.markdown("</div>", unsafe_allow_html=True)
@@ -896,12 +682,12 @@ def main():
         st.session_state['telegram_bot_token'] = tg_token
         st.session_state['telegram_chat_id'] = tg_chat
 
-        if st.button("💾 Save settings", width="stretch"):
+        if st.button("💾 Save settings", use_container_width=True):
             save_config_from_state()
             localS.setItem("telegram_config", {"bot_token": tg_token, "chat_id": tg_chat})
             st.success("Saved to config.json + browser storage")
 
-        if st.button("📤 Send P&L Now", width="stretch"):
+        if st.button("📤 Send P&L Now", use_container_width=True):
             text = build_pnl_and_reco_summary()
             tg_resp = send_telegram_message(text) if tg_token and tg_chat else {"info": "Telegram not configured"}
             st.success("Triggered P&L send. Check Telegram.")
@@ -912,7 +698,7 @@ def main():
         st.caption(f"Loaded {len(STOCK_UNIVERSE)} symbols from {NIFTY200_CSV}")
         c1, c2 = st.columns([2, 1])
         with c1:
-            if st.button("🔁 Regenerate CSV", width="stretch"):
+            if st.button("🔁 Regenerate CSV", use_container_width=True):
                 regenerate_nifty200_mapping()
         with c2:
             if st.checkbox("Show list"):
@@ -922,19 +708,71 @@ def main():
     # Top action buttons
     c1, c2, c3 = st.columns([3, 1.2, 1])
     with c1:
-        if st.button("🚀 Run Full Scan", type="primary", width="stretch"):
+        if st.button("🚀 Run Full Scan", type="primary", use_container_width=True):
             run_analysis()
-            st.rerun()
     with c2:
-        if st.button("🔄 Refresh Page", width="stretch"):
+        if st.button("🔄 Refresh Page", use_container_width=True):
             st.rerun()
     with c3:
         st.metric("Universe", len(STOCK_UNIVERSE))
 
     st.markdown("---")
 
-    # Tabs (reuse your previous rendering logic for recs, top BTST, Shoonya, Dhan, CSV analyzer)
-    # ...
+    # Tabs placeholder – plug in your previous tables/logic here
+    tab_btst, tab_intraday, tab_weekly, tab_monthly, tab_portfolio = st.tabs(
+        ["🌙 BTST", "⚡ Intraday", "📆 Weekly", "📅 Monthly", "📊 Portfolio"]
+    )
+
+    with tab_btst:
+        btst_recs = st.session_state['recommendations'].get('BTST', [])
+        st.subheader("BTST Opportunities")
+        if not btst_recs:
+            st.info("Run Full Scan to generate BTST recommendations.")
+        else:
+            df = pd.DataFrame(btst_recs)
+            st.dataframe(df, use_container_width=True)
+
+    with tab_intraday:
+        intraday_recs = st.session_state['recommendations'].get('Intraday', [])
+        st.subheader("Intraday Signals")
+        if not intraday_recs:
+            st.info("Run Full Scan to generate intraday recommendations.")
+        else:
+            df = pd.DataFrame(intraday_recs)
+            st.dataframe(df, use_container_width=True)
+
+    with tab_weekly:
+        weekly_recs = st.session_state['recommendations'].get('Weekly', [])
+        st.subheader("Weekly Swing Ideas")
+        if not weekly_recs:
+            st.info("Run Full Scan to generate weekly recommendations.")
+        else:
+            df = pd.DataFrame(weekly_recs)
+            st.dataframe(df, use_container_width=True)
+
+    with tab_monthly:
+        monthly_recs = st.session_state['recommendations'].get('Monthly', [])
+        st.subheader("Monthly Position Trades")
+        if not monthly_recs:
+            st.info("Run Full Scan to generate monthly recommendations.")
+        else:
+            df = pd.DataFrame(monthly_recs)
+            st.dataframe(df, use_container_width=True)
+
+    with tab_portfolio:
+        st.subheader("Portfolio (Dhan)")
+        df_port, total_pnl = format_dhan_portfolio_table()
+        if df_port is None or df_port.empty:
+            st.info("Connect Dhan to see portfolio.")
+        else:
+            c1, c2 = st.columns([3, 1])
+            with c1:
+                st.dataframe(df_port, use_container_width=True)
+            with c2:
+                st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
+                st.markdown("<h3>Total P&L</h3>", unsafe_allow_html=True)
+                st.markdown(f"<div class='value'>₹{total_pnl:,.2f}</div>", unsafe_allow_html=True)
+                st.markdown("</div>", unsafe_allow_html=True)
 
 if __name__ == "__main__":
     main()
