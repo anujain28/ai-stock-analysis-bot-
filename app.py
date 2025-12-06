@@ -79,8 +79,14 @@ st.set_page_config(
 
 st.markdown("""
 <style>
+    /* Main page: white background, dark text */
+    .stApp {
+        background-color: #ffffff;
+        color: #111827;
+    }
     body {
-        background: radial-gradient(circle at top left, #1e293b 0, #020617 50%, #0f172a 100%);
+        background-color: #ffffff;
+        color: #111827;
     }
     .main-header {
         background: linear-gradient(120deg, #2563eb 0%, #7c3aed 35%, #ec4899 100%);
@@ -89,7 +95,7 @@ st.markdown("""
         text-align: center;
         color: white;
         margin-bottom: 26px;
-        box-shadow: 0 14px 30px rgba(15,23,42,0.7);
+        box-shadow: 0 14px 30px rgba(15,23,42,0.4);
         border: 1px solid rgba(255,255,255,0.12);
     }
     .main-header h1 {
@@ -119,6 +125,7 @@ st.markdown("""
         border: 1px solid rgba(191,219,254,0.5);
         box-shadow: 0 10px 25px rgba(15,23,42,0.9);
         margin-bottom: 10px;
+        color: #e5e7eb;
     }
     .metric-card h3 {
         font-size: 0.9rem;
@@ -148,9 +155,10 @@ st.markdown("""
     }
     [data-testid=stSidebar] {
         background: radial-gradient(circle at top, #4c1d95 0, #581c87 40%, #2e1065 100%);
+        color: #f9fafb;
     }
 </style>
-""", unsafe_allow_html=True)  # violet sidebar [web:219][web:301]
+""", unsafe_allow_html=True)  # white main, violet sidebar [web:322][web:219][web:301]
 
 IST = pytz.timezone('Asia/Kolkata')
 
@@ -555,11 +563,10 @@ def run_analysis():
 
 # ========= BACKGROUND AUTO SCAN (20 MIN, MARKET HOURS) =========
 def market_hours_window():
-    # Use 9:10–15:40 IST envelope around regular 9:15–15:30 trading [web:308][web:313]
     now = datetime.now(IST)
     start = now.replace(hour=9, minute=10, second=0, microsecond=0)
     end = now.replace(hour=15, minute=40, second=0, microsecond=0)
-    return start <= now <= end
+    return start <= now <= end  # 9:10–15:40 envelope [web:308][web:313]
 
 def maybe_run_auto_scan():
     now = datetime.now(IST)
@@ -587,10 +594,7 @@ def get_top_stocks(limit: int = 10):
             all_recs.append(rec)
     if not all_recs:
         return []
-
     df_all = pd.DataFrame(all_recs).sort_values("score", ascending=False)
-
-    # Remove duplicate scrips by ticker, keep best score [web:311][web:314]
     seen = set()
     unique_rows = []
     for _, row in df_all.iterrows():
@@ -610,7 +614,6 @@ def get_btst_top_for_sidebar(n: int = 5):
     if not btst_recs:
         return []
     df = pd.DataFrame(btst_recs).sort_values("score", ascending=False)
-    # unique tickers only
     seen = set()
     rows = []
     for _, r in df.iterrows():
@@ -660,6 +663,24 @@ def analyze_groww_portfolio(df: pd.DataFrame):
         "positions": positions,
         "top_holdings": top,
     }
+
+# ========= TABLE HELPERS: ADD TARGET / PROFIT% & HIDE INDEX =========
+def add_targets_to_df(df: pd.DataFrame) -> pd.DataFrame:
+    if df is None or df.empty:
+        return df
+    df2 = df.copy()
+    if "price" in df2.columns and "target_1" in df2.columns:
+        df2["Target Price"] = df2["target_1"]
+        # profit % = (target - cmp) / cmp * 100 [web:321][web:324]
+        df2["Profit %"] = ((df2["target_1"] - df2["price"]) / df2["price"]) * 100
+    return df2
+
+def show_reco_table(df: pd.DataFrame):
+    if df is None or df.empty:
+        return
+    df2 = add_targets_to_df(df)
+    # hide index via dataframe index parameter (v1.25+) [web:318][web:317]
+    st.dataframe(df2, use_container_width=True, hide_index=True)
 
 # ========= MAIN UI =========
 def main():
@@ -713,7 +734,7 @@ def main():
         ["🔥 Top Stocks", "🌙 BTST", "⚡ Intraday", "📆 Weekly", "📅 Monthly", "📊 GROWW Stocks", "⚙️ Configuration"]
     )
 
-    # Top Stocks tab – 10 best unique scrips with flash cards
+    # Top Stocks tab – 10 best unique scrips with flash cards + table
     with tab_top:
         st.subheader("Top 10 Stocks Across All Setups")
         top_recs = get_top_stocks(limit=10)
@@ -744,6 +765,10 @@ def main():
                     st.markdown(f"<div class='sub'>Reason: {reason}</div>", unsafe_allow_html=True)
                 st.markdown("</div>", unsafe_allow_html=True)
 
+            # also show as table with Target Price & Profit%
+            st.markdown("##### Tabular View")
+            show_reco_table(pd.DataFrame(top_recs))
+
     # BTST tab
     with tab_btst:
         recs = st.session_state['recommendations'].get('BTST', [])
@@ -751,7 +776,7 @@ def main():
         if not recs:
             st.info("Run Full Scan to generate BTST recommendations.")
         else:
-            st.dataframe(pd.DataFrame(recs), use_container_width=True)
+            show_reco_table(pd.DataFrame(recs))
 
     # Intraday tab
     with tab_intraday:
@@ -760,7 +785,7 @@ def main():
         if not recs:
             st.info("Run Full Scan to generate intraday recommendations.")
         else:
-            st.dataframe(pd.DataFrame(recs), use_container_width=True)
+            show_reco_table(pd.DataFrame(recs))
 
     # Weekly tab
     with tab_weekly:
@@ -769,7 +794,7 @@ def main():
         if not recs:
             st.info("Run Full Scan to generate weekly recommendations.")
         else:
-            st.dataframe(pd.DataFrame(recs), use_container_width=True)
+            show_reco_table(pd.DataFrame(recs))
 
     # Monthly tab
     with tab_monthly:
@@ -778,7 +803,7 @@ def main():
         if not recs:
             st.info("Run Full Scan to generate monthly recommendations.")
         else:
-            st.dataframe(pd.DataFrame(recs), use_container_width=True)
+            show_reco_table(pd.DataFrame(recs))
 
     # GROWW Stocks tab – CSV upload analysis
     with tab_groww:
@@ -796,7 +821,7 @@ def main():
             try:
                 df_up = pd.read_csv(uploaded, sep=None, engine="python")
                 st.write("Preview:")
-                st.dataframe(df_up.head(), use_container_width=True)
+                st.dataframe(df_up.head(), use_container_width=True, hide_index=True)
                 analysis = analyze_groww_portfolio(df_up)
                 if "error" in analysis:
                     st.error(analysis["error"])
@@ -810,7 +835,7 @@ def main():
                     with c3:
                         st.metric("Positions", analysis["positions"])
                     st.markdown("##### Top holdings by capital")
-                    st.dataframe(analysis["top_holdings"], use_container_width=True)
+                    st.dataframe(analysis["top_holdings"], use_container_width=True, hide_index=True)
             except Exception as e:
                 st.error(f"Error reading uploaded CSV: {e}")
         else:
@@ -850,7 +875,7 @@ def main():
                 else:
                     c1, c2 = st.columns([3, 1])
                     with c1:
-                        st.dataframe(df_port, use_container_width=True)
+                        st.dataframe(df_port, use_container_width=True, hide_index=True)
                     with c2:
                         st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
                         st.markdown("<h3>Total P&L</h3>", unsafe_allow_html=True)
