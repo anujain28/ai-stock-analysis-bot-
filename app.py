@@ -774,13 +774,8 @@ def main():
 
     if st.session_state['last_analysis_time']:
         st.caption(f"🕒 Last Full Scan: {st.session_state['last_analysis_time'].strftime('%d-%m-%Y %I:%M %p')}")
-
-    st.info("On mobile you can view Top 20 stocks. For other views (BTST, Intraday, Weekly, Monthly, Groww, Dhan, Configuration), please open this dashboard on a laptop or desktop.", icon="📱")
-
     st.markdown("---")
-
     page = st.session_state['current_page']
-
     if page == "🔥 Top Stocks":
         st.subheader("🔥 Top Stocks (up to 20)")
         top_recs = get_top_stocks(limit=20)
