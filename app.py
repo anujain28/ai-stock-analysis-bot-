@@ -26,7 +26,7 @@ import requests
 import os
 import json
 
-from streamlit_local_storage import LocalStorage  # browser localStorage helper[web:167][web:170]
+from streamlit_local_storage import LocalStorage  # browser localStorage helper
 
 # Dhan
 try:
@@ -155,7 +155,7 @@ IST = pytz.timezone('Asia/Kolkata')
 
 # ========= LOAD CONFIG & SESSION STATE =========
 _cfg = load_config()
-localS = LocalStorage()  # browser localStorage manager[web:170]
+localS = LocalStorage()  # browser localStorage manager
 
 # Server-side base state
 if 'last_analysis_time' not in st.session_state:
@@ -234,12 +234,6 @@ def regenerate_nifty200_mapping():
         return False
 
 # ========= SYMBOL HELPERS =========
-def normalize_symbol(raw: str) -> str:
-    if not isinstance(raw, str):
-        return ""
-    t = raw.strip().upper().replace("&", "").replace("-", "")
-    return t.split()[0]
-
 def nse_yf_symbol(sym: str) -> str:
     if not sym:
         return ""
@@ -369,7 +363,7 @@ def send_telegram_message(text: str):
     except Exception as e:
         return {"ok": False, "error": str(e)}
 
-# ========= TA & ANALYSIS (unchanged core) =========
+# ========= TA & ANALYSIS =========
 def safe_extract(df, col):
     if df is None or df.empty or col not in df.columns:
         return pd.Series(dtype=float)
@@ -609,13 +603,6 @@ def build_pnl_and_reco_summary():
         lines.append("• No live portfolio data yet.")
     return "\n".join(lines)
 
-# ========= CSV ANALYZER HELPERS =========
-# Keep your existing:
-# calculate_cagr, compute_cagrs_from_history,
-# get_dividend_stats, get_price_history, analyze_csv_stock,
-# analyze_csv_portfolio, portfolio_csv_recommendations
-# pasted here unchanged from your previous app.
-
 # ========= LIVE MARKET HELPERS =========
 def get_index_quote(symbol: str):
     try:
@@ -633,9 +620,8 @@ def get_index_quote(symbol: str):
 
 # ========= MAIN UI =========
 def main():
-    # 1-second auto-refresh for sidebar market section
-    
-    st.sidebar.empty()  # ensure sidebar gets redrawn each run
+    # auto-refresh every 1 second
+    st.experimental_set_query_params(_=datetime.now().timestamp())
 
     st.markdown("""
     <div class='main-header'>
@@ -669,8 +655,8 @@ def main():
     with st.sidebar:
         # Live market status
         st.markdown("<div class='side-section'><h4>📈 Market Live</h4>", unsafe_allow_html=True)
-        n_price, n_chg = get_index_quote("^NSEI")  # Nifty 50[web:196]
-        s_price, s_chg = get_index_quote("^BSESN")  # Sensex[web:193]
+        n_price, n_chg = get_index_quote("^NSEI")   # Nifty 50
+        s_price, s_chg = get_index_quote("^BSESN")  # Sensex
 
         col1, col2 = st.columns(2)
         with col1:
@@ -683,7 +669,7 @@ def main():
                 st.metric("Sensex", f"{s_price:,.0f}", f"{s_chg:.2f}%")
             else:
                 st.metric("Sensex", "--", "--")
-        st.caption("Updates every second (Refresh loop).")
+        st.caption("Auto-refresh approx. every second.")
         st.markdown("</div>", unsafe_allow_html=True)
 
         # Top 5 BTST recommendations
@@ -729,7 +715,7 @@ def main():
     # ===== Tabs =====
     tab_btst, tab_intraday, tab_weekly, tab_monthly, tab_portfolio, tab_csv, tab_config = st.tabs(
         ["🌙 Top 5 BTST", "⚡ Intraday", "📆 Weekly", "📅 Monthly", "📊 Portfolio", "📂 CSV Analyzer", "⚙️ Configuration"]
-    )[web:186][web:188]
+    )
 
     # --- Top 5 BTST tab ---
     with tab_btst:
@@ -775,7 +761,7 @@ def main():
             df = pd.DataFrame(monthly_recs)
             st.dataframe(df, use_container_width=True)
 
-    # --- Portfolio tab (Dhan only now) ---
+    # --- Portfolio tab (Dhan) ---
     with tab_portfolio:
         st.subheader("Portfolio (Dhan)")
         df_port, total_pnl = format_dhan_portfolio_table()
@@ -794,8 +780,7 @@ def main():
     # --- CSV Analyzer tab ---
     with tab_csv:
         st.subheader("CSV Portfolio Analyzer")
-        st.write("Paste your CSV logic functions here (unchanged from your previous app).")
-        # Call your existing CSV analyzer UI here.
+        st.write("Integrate your existing CSV analyzer UI here (functions unchanged from previous version).")
 
     # --- Configuration tab ---
     with tab_config:
