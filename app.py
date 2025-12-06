@@ -178,8 +178,22 @@ st.markdown("""
         border-radius: 10px;
         overflow: hidden;
     }
+
+    /* Refresh button (key='refresh_btn') */
+    div.stButton[data-baseweb="button"] button[kind="secondary"] {
+        font-weight: 500;
+    }
+
+    .st-key-refresh_btn button {
+        background-color: #f97316 !important;  /* orange */
+        color: #ffffff !important;
+        border-color: #ea580c !important;
+    }
+    .st-key-refresh_btn button:hover {
+        background-color: #ea580c !important;
+    }
 </style>
-""", unsafe_allow_html=True)  # sidebar nav + your palette [web:326][web:333]
+""", unsafe_allow_html=True)  # button CSS via DOM selector [web:441][web:443]
 
 IST = pytz.timezone('Asia/Kolkata')
 
@@ -750,18 +764,19 @@ def main():
     # Time-based auto scan (runs whenever script reruns)
     auto_scan_if_due()
 
-    c1, c2, c3 = st.columns([3, 1.2, 1])
+    c1, c2 = st.columns([3, 1.2])
     with c1:
         if st.button("🚀 Run Full Scan", type="primary", use_container_width=True):
             run_analysis()
     with c2:
-        if st.button("🔄 Refresh View", use_container_width=True):
+        if st.button("🔄 Refresh View", key="refresh_btn", use_container_width=True):
             st.rerun()
-    with c3:
-        st.metric("📦 Universe", len(STOCK_UNIVERSE))
 
     if st.session_state['last_analysis_time']:
         st.caption(f"🕒 Last Full Scan: {st.session_state['last_analysis_time'].strftime('%d-%m-%Y %I:%M %p')}")
+
+    st.info("On mobile you can view Top 20 stocks. For other views (BTST, Intraday, Weekly, Monthly, Groww, Dhan, Configuration), please open this dashboard on a laptop or desktop.", icon="📱")
+
     st.markdown("---")
 
     page = st.session_state['current_page']
