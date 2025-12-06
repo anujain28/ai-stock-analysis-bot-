@@ -18,13 +18,14 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 import ta
-from datetime import datetime, timedelta
+from datetime import datetime
 import time
 from typing import Dict, List, Optional
 import pytz
 import requests
 import os
 import json
+from pathlib import Path
 
 from streamlit_local_storage import LocalStorage  # browser localStorage helper
 
@@ -187,17 +188,22 @@ for key, default in [
     if key not in st.session_state:
         st.session_state[key] = default
 
-# ========= NIFTY 200 FROM CSV =========
-NIFTY200_CSV = "data/nifty200_yahoo.csv"
-NIFTY_GEN_SCRIPT = "scripts/generate_nifty200_yahoo.py"
+# ========= NIFTY 200 FROM CSV (read-only from repo) =========
+DATA_DIR = Path(__file__).parent / "data"
+NIFTY200_CSV = DATA_DIR / "nifty200_yahoo.csv"
 
 @st.cache_data
 def load_nifty200_universe():
-    if not os.path.exists(NIFTY200_CSV):
+    if not NIFTY200_CSV.exists():
+        st.error(f"Universe file not found: {NIFTY200_CSV}")
         return [], {}
     try:
         df = pd.read_csv(NIFTY200_CSV)
-    except Exception:
+    except Exception as e:
+        st.error(f"Error reading {NIFTY200_CSV.name}: {e}")
+        return [], {}
+    if "SYMBOL" not in df.columns or "YF_TICKER" not in df.columns:
+        st.error("nifty200_yahoo.csv must have columns: SYMBOL, YF_TICKER")
         return [], {}
     df["SYMBOL"] = df["SYMBOL"].astype(str).str.strip().str.upper()
     df["YF_TICKER"] = df["YF_TICKER"].astype(str).str.strip()
@@ -206,32 +212,6 @@ def load_nifty200_universe():
     return symbols, mapping
 
 STOCK_UNIVERSE, NIFTY_YF_MAP = load_nifty200_universe()
-
-def regenerate_nifty200_mapping():
-    if not os.path.exists(NIFTY_GEN_SCRIPT):
-        st.error(f"Generator script not found at {NIFTY_GEN_SCRIPT}")
-        return False
-    try:
-        result = subprocess.run(
-            [sys.executable, NIFTY_GEN_SCRIPT],
-            capture_output=True,
-            text=True,
-            timeout=120,
-        )
-        if result.returncode != 0:
-            st.error("Generation failed. Check logs below.")
-            st.code(result.stderr or result.stdout)
-            return False
-        st.success("✅ Regenerated data/nifty200_yahoo.csv successfully.")
-        if result.stdout:
-            st.code(result.stdout)
-        load_nifty200_universe.clear()
-        global STOCK_UNIVERSE, NIFTY_YF_MAP
-        STOCK_UNIVERSE, NIFTY_YF_MAP = load_nifty200_universe()
-        return True
-    except Exception as e:
-        st.error(f"Error regenerating Nifty 200 mapping: {e}")
-        return False
 
 # ========= SYMBOL HELPERS =========
 def normalize_symbol(raw: str) -> str:
@@ -501,7 +481,7 @@ class TechnicalAnalysis:
             'atr': float(round(atr_v, 2)),
             'stop_loss': float(round(price - (atr_v * 2), 2)),
             'target_1': float(round(price + (atr_v * 2), 2)),
-            'target_2': float(round(price + (atr_v * 3), 2)),
+            'target_2': float(round(price + (atr_v * 3), 2),),
             'target_3': float(round(price + (atr_v * 4), 2)),
             'risk_reward': '1:2-4'
         }
@@ -695,14 +675,9 @@ def main():
         st.markdown("</div>", unsafe_allow_html=True)
 
         st.markdown("<div class='side-section'><h4>📂 Nifty 200 Universe</h4>", unsafe_allow_html=True)
-        st.caption(f"Loaded {len(STOCK_UNIVERSE)} symbols from {NIFTY200_CSV}")
-        c1, c2 = st.columns([2, 1])
-        with c1:
-            if st.button("🔁 Regenerate CSV", use_container_width=True):
-                regenerate_nifty200_mapping()
-        with c2:
-            if st.checkbox("Show list"):
-                st.write(sorted(STOCK_UNIVERSE))
+        st.caption(f"Loaded {len(STOCK_UNIVERSE)} symbols from data/nifty200_yahoo.csv")
+        if st.checkbox("Show list"):
+            st.write(sorted(STOCK_UNIVERSE))
         st.markdown("</div>", unsafe_allow_html=True)
 
     # Top action buttons
@@ -718,7 +693,7 @@ def main():
 
     st.markdown("---")
 
-    # Tabs placeholder – plug in your previous tables/logic here
+    # Tabs
     tab_btst, tab_intraday, tab_weekly, tab_monthly, tab_portfolio = st.tabs(
         ["🌙 BTST", "⚡ Intraday", "📆 Weekly", "📅 Monthly", "📊 Portfolio"]
     )
