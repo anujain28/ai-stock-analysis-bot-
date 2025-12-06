@@ -614,11 +614,11 @@ PAGES = [
     "⚡ Intraday",
     "📆 Weekly",
     "📅 Monthly",
-    "📊 Groww",        # renamed from GROWW Stocks
+    "📊 Groww",
     "⚙️ Configuration",
 ]
 
-def sidebar_nav():  # <-- add parentheses here to fix SyntaxError
+def sidebar_nav():
     with st.sidebar:
         st.markdown("<div class='side-section'><h4>📂 Navigation</h4>", unsafe_allow_html=True)
         page = st.radio(
@@ -626,7 +626,7 @@ def sidebar_nav():  # <-- add parentheses here to fix SyntaxError
             PAGES,
             index=0,
             label_visibility="collapsed",
-        )
+        )  # navigation panel [web:325][web:326][web:333]
         st.markdown("</div>", unsafe_allow_html=True)
 
         # Dhan portfolio quick view in sidebar
@@ -640,3 +640,239 @@ def sidebar_nav():  # <-- add parentheses here to fix SyntaxError
 
     return page
 
+# ========= GROWW / GROWW ANALYSIS =========
+def analyze_groww_portfolio(df: pd.DataFrame):
+    cols = {c.lower(): c for c in df.columns}
+    required = [
+        "stock name",
+        "isin",
+        "quantity",
+        "average buy price per share",
+        "total investment",
+        "total cmp",
+        "total p&l",
+    ]
+    for r in required:
+        if r not in cols:
+            return {"error": "Columns must match the GROWW template exactly."}
+    qcol = cols["quantity"]
+    invcol = cols["total investment"]
+    pnlcol = cols["total p&l"]
+
+    df_use = df.copy()
+    df_use["_qty"] = pd.to_numeric(df_use[qcol], errors="coerce").fillna(0.0)
+    df_use["_inv"] = pd.to_numeric(df_use[invcol], errors="coerce").fillna(0.0)
+    df_use["_pnl"] = pd.to_numeric(df_use[pnlcol], errors="coerce").fillna(0.0)
+
+    total_inv = float(df_use["_inv"].sum())
+    total_pnl = float(df_use["_pnl"].sum())
+    positions = int((df_use["_qty"] > 0).sum())
+    top = (
+        df_use.sort_values("_inv", ascending=False)[[cols["stock name"], cols["quantity"], invcol, pnlcol]]
+        .head(10)
+        .rename(columns={cols["stock name"]: "Stock Name", cols["quantity"]: "Quantity"})
+    )
+    return {
+        "total_investment": total_inv,
+        "total_pnl": total_pnl,
+        "positions": positions,
+        "top_holdings": top,
+    }
+
+# ========= FLASH CARD RENDER =========
+def render_reco_cards(recs: List[Dict], label: str):
+    if not recs:
+        st.info(f"Run Full Scan to generate {label} recommendations.")
+        return
+    df = pd.DataFrame(recs).sort_values("score", ascending=False).head(10)
+    for _, rec in df.iterrows():
+        cmp_ = rec.get('price', 0.0)
+        tgt = rec.get('target_1', np.nan)
+        diff = tgt - cmp_ if tgt is not None and not np.isnan(tgt) else np.nan
+        profit_pct = (diff / cmp_ * 100) if cmp_ and not np.isnan(diff) else np.nan
+        reason = rec.get('reasons', '')
+        st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
+        st.markdown(f"<h3>{rec.get('ticker','')} • {rec.get('signal_strength','')}</h3>", unsafe_allow_html=True)
+        st.markdown(
+            f"<div class='value'>CMP: ₹{cmp_:.2f} | Target: ₹{tgt:.2f}</div>",
+            unsafe_allow_html=True
+        )
+        if not np.isnan(diff):
+            st.markdown(
+                f"<div class='sub'>Target Profit: ₹{diff:.2f} • Profit %: {profit_pct:.2f}%</div>",
+                unsafe_allow_html=True
+            )
+        st.markdown(
+            f"<div class='sub'>Timeframe: {rec.get('timeframe','')} • Setup: {rec.get('period',label)}</div>",
+            unsafe_allow_html=True
+        )
+        if reason:
+            st.markdown(f"<div class='sub'>Reason: {reason}</div>", unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+# ========= MAIN UI =========
+def main():
+    st.markdown("""
+    <div class='main-header'>
+        <h1>🤖 AI Stock Analysis Bot</h1>
+        <p>Multi-timeframe scanner + Dhan + GROWW portfolio analyzer</p>
+        <div class="status-badge">Live • IST</div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    maybe_run_auto_scan()
+
+    # Top controls
+    c1, c2, c3 = st.columns([3, 1.2, 1])
+    with c1:
+        if st.button("👈 Click here then 🚀 Run Full Scan", type="primary", use_container_width=True):
+            run_analysis()
+    with c2:
+        if st.button("🔄 Refresh Page", use_container_width=True):
+            st.rerun()
+    with c3:
+        st.metric("Universe", len(STOCK_UNIVERSE))
+
+    if st.session_state['last_analysis_time']:
+        st.caption(f"Last Analysis: {st.session_state['last_analysis_time'].strftime('%d-%m-%Y %I:%M %p')}")
+
+    st.markdown("---")
+
+    page = sidebar_nav()
+
+    if page == "🔥 Top Stocks":
+        st.subheader("Top 10 Stocks Across All Setups")
+        top_recs = get_top_stocks(limit=10)
+        render_reco_cards(top_recs, "Top")
+    elif page == "🌙 BTST":
+        st.subheader("BTST Opportunities")
+        recs = st.session_state['recommendations'].get('BTST', [])
+        for r in recs:
+            r.setdefault("period", "BTST")
+        render_reco_cards(recs, "BTST")
+    elif page == "⚡ Intraday":
+        st.subheader("Intraday Signals")
+        recs = st.session_state['recommendations'].get('Intraday', [])
+        for r in recs:
+            r.setdefault("period", "Intraday")
+        render_reco_cards(recs, "Intraday")
+    elif page == "📆 Weekly":
+        st.subheader("Weekly Swing Ideas")
+        recs = st.session_state['recommendations'].get('Weekly', [])
+        for r in recs:
+            r.setdefault("period", "Weekly")
+        render_reco_cards(recs, "Weekly")
+    elif page == "📅 Monthly":
+        st.subheader("Monthly Position Trades")
+        recs = st.session_state['recommendations'].get('Monthly', [])
+        for r in recs:
+            r.setdefault("period", "Monthly")
+        render_reco_cards(recs, "Monthly")
+    elif page == "📊 Groww":
+        st.subheader("Groww Portfolio Analysis (CSV Upload)")
+        st.markdown("CSV template columns (exact names):")
+        st.code(
+            "Stock Name\tISIN\tQuantity\tAverage buy price per share\t"
+            "Total Investment\tTotal CMP\tTOTAL P&L",
+            language="text"
+        )
+        uploaded = st.file_uploader(
+            "Upload Groww portfolio CSV", type=["csv"], key="groww_csv_upload"
+        )
+        if uploaded is not None:
+            try:
+                df_up = pd.read_csv(uploaded, sep=None, engine="python")
+                st.write("Preview:")
+                st.dataframe(df_up.head(), use_container_width=True, hide_index=True)
+                analysis = analyze_groww_portfolio(df_up)
+                if "error" in analysis:
+                    st.error(analysis["error"])
+                else:
+                    st.markdown("##### Summary")
+                    c1, c2, c3 = st.columns(3)
+                    with c1:
+                        st.metric("Total Investment", f"₹{analysis['total_investment']:,.2f}")
+                    with c2:
+                        st.metric("Total P&L", f"₹{analysis['total_pnl']:,.2f}")
+                    with c3:
+                        st.metric("Positions", analysis["positions"])
+                    st.markdown("##### Top holdings by capital")
+                    st.dataframe(analysis["top_holdings"], use_container_width=True, hide_index=True)
+            except Exception as e:
+                st.error(f"Error reading uploaded CSV: {e}")
+        else:
+            st.info("Upload your Groww portfolio CSV to see analysis here.")
+    elif page == "⚙️ Configuration":
+        st.markdown("### App Configuration")
+
+        with st.expander("Dhan (Connect + Portfolio)", expanded=True):
+            dhan_store = localS.getItem("dhan_config") or {}
+            if dhan_store:
+                st.session_state['dhan_client_id'] = dhan_store.get("client_id", st.session_state['dhan_client_id'])
+
+            dhan_enable = st.checkbox("Enable Dhan", value=st.session_state.get('dhan_enabled', False))
+            st.session_state['dhan_enabled'] = dhan_enable
+            if dhan_enable:
+                dcid = st.text_input("Client ID", value=st.session_state.get('dhan_client_id', ''), key="cfg_dhan_client")
+                dtoken = st.text_input("Access Token", value=st.session_state.get('dhan_access_token', ''), type="password", key="cfg_dhan_token")
+                st.session_state['dhan_client_id'] = dcid
+                st.session_state['dhan_access_token'] = dtoken
+                c1, c2 = st.columns(2)
+                with c1:
+                    if st.button("🔑 Connect Dhan", use_container_width=True, key="btn_connect_dhan"):
+                        dhan_login(dcid, dtoken)
+                        localS.setItem("dhan_config", {"client_id": dcid})
+                with c2:
+                    if st.button("🚪 Logout Dhan", use_container_width=True, key="btn_logout_dhan"):
+                        dhan_logout()
+                st.caption(st.session_state['dhan_login_msg'])
+
+                df_port, total_pnl = format_dhan_portfolio_table()
+                if df_port is None or df_port.empty:
+                    st.info("No Dhan holdings/positions fetched yet.")
+                else:
+                    c1, c2 = st.columns([3, 1])
+                    with c1:
+                        st.dataframe(df_port, use_container_width=True, hide_index=True)
+                    with c2:
+                        st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
+                        st.markdown("<h3>Total P&L</h3>", unsafe_allow_html=True)
+                        st.markdown(f"<div class='value'>₹{total_pnl:,.2f}</div>", unsafe_allow_html=True)
+                        st.markdown("</div>", unsafe_allow_html=True)
+
+        with st.expander("Telegram P&L Notifications", expanded=False):
+            tg_store = localS.getItem("telegram_config") or {}
+            if tg_store:
+                st.session_state['telegram_bot_token'] = tg_store.get("bot_token", st.session_state['telegram_bot_token'])
+                st.session_state['telegram_chat_id'] = tg_store.get("chat_id", st.session_state['telegram_chat_id'])
+
+            notify_toggle = st.checkbox("Enable P&L notifications (30 min)", value=st.session_state['notify_enabled'], key="cfg_notify_toggle")
+            st.session_state['notify_enabled'] = notify_toggle
+            tg_token = st.text_input("Bot Token", value=st.session_state['telegram_bot_token'], key="cfg_tg_token")
+            tg_chat = st.text_input("Chat ID", value=st.session_state['telegram_chat_id'], key="cfg_tg_chat")
+            st.session_state['telegram_bot_token'] = tg_token
+            st.session_state['telegram_chat_id'] = tg_chat
+
+            c1, c2 = st.columns(2)
+            with c1:
+                if st.button("💾 Save settings", use_container_width=True, key="btn_save_settings"):
+                    save_config_from_state()
+                    localS.setItem("telegram_config", {"bot_token": tg_token, "chat_id": tg_chat})
+                    st.success("Saved to config.json + browser storage")
+            with c2:
+                if st.button("📤 Send P&L Now", use_container_width=True, key="btn_send_pnl"):
+                    text = "P&L summary feature hooked to Dhan portfolio."
+                    tg_resp = send_telegram_message(text) if tg_token and tg_chat else {"info": "Telegram not configured"}
+                    st.success("Triggered P&L send. Check Telegram.")
+                    st.json({"telegram": tg_resp})
+
+        with st.expander("Nifty 200 Universe", expanded=False):
+            if st.button("🔁 Regenerate NIFTY 200 CSV (internal)", use_container_width=True, key="btn_regen_nifty"):
+                ok = regenerate_nifty200_csv_from_master()
+                if ok:
+                    st.success("Regenerated data/nifty200_yahoo.csv inside app container.")
+                else:
+                    st.error("Failed to regenerate CSV. See error above.")
+
+if __name__ == "__main__":
+    main()
