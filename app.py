@@ -83,7 +83,7 @@ st.markdown("""
         --bg-main: #f3f4f6;          /* light gray */
         --bg-header-from: #4f46e5;   /* indigo-600 */
         --bg-header-to: #0ea5e9;     /* sky-500 */
-        --bg-card: #ffffff;          /* slate-900 */
+        --bg-card: #ffffff;          /* white card */
         --border-card: #1e293b;      /* slate-800 */
         --accent: #22c55e;           /* green-500 */
         --accent-soft: #bbf7d0;      /* green-100 */
@@ -91,8 +91,7 @@ st.markdown("""
         --nav-bg-hover: #4f46e5;     /* indigo-600 */
         --nav-bg-active: #4338ca;    /* indigo-700 */
         --nav-text: #111827;         /* gray-900 */
-        --nav-text-active: #0f172a;  /* white */
-    }
+        --nav-text-active: #0f172a;  /* dark slate */
     }
 
     .stApp {
@@ -153,14 +152,21 @@ st.markdown("""
         gap: 8px;
         margin: 10px 0 8px 0;
     }
+
+    /* Desktop vs mobile nav containers */
+    .top-nav-desktop { display: flex; }
+    .top-nav-mobile { display: none; }
+
     @media (max-width: 768px) {
-        .top-nav {
+        .top-nav-desktop { display: none !important; }
+        .top-nav-mobile {
+            display: flex !important;
             justify-content: flex-start;
         }
     }
 
-    /* Top navigation buttons */
-    .top-nav .stButton > button {
+    /* Top navigation buttons (desktop) */
+    .top-nav-desktop .stButton > button {
         background-color: var(--nav-bg) !important;
         color: var(--nav-text) !important;
         border-radius: 999px !important;
@@ -169,41 +175,52 @@ st.markdown("""
         padding: 0.35rem 0.75rem !important;
         box-shadow: none !important;
     }
-    .top-nav .stButton > button:hover {
+    .top-nav-desktop .stButton > button:hover {
         background-color: var(--nav-bg-hover) !important;
-        color: var(--nav-text-active) !important;
+        color: #ffffff !important;
         border-color: var(--nav-bg-hover) !important;
     }
-    .top-nav .stButton > button:focus,
-    .top-nav .stButton > button:active {
+    .top-nav-desktop .stButton > button:focus,
+    .top-nav-desktop .stButton > button:active {
         background-color: var(--nav-bg-active) !important;
-        color: var(--nav-text-active) !important;
+        color: #ffffff !important;
         border-color: var(--nav-bg-active) !important;
         box-shadow: 0 0 0 1px rgba(79,70,229,0.5) !important;
+    }
+
+    /* Mobile single button style */
+    .top-nav-mobile .mobile-top-btn {
+        background-color: var(--nav-bg-hover);
+        color: #ffffff;
+        border-radius: 999px;
+        border: 1px solid var(--nav-bg-hover);
+        font-size: 0.9rem;
+        padding: 0.4rem 0.9rem;
+        cursor: pointer;
     }
 
     .metric-card {
         padding: 12px 12px;
         border-radius: 14px;
-        background: radial-gradient(circle at top left, #020617 0%, var(--bg-card) 50%, #020617 100%);
+        background: var(--bg-card);
         border: 1px solid var(--border-card);
-        box-shadow: 0 10px 25px rgba(15,23,42,0.7);
+        box-shadow: 0 4px 12px rgba(15,23,42,0.18);
         margin-bottom: 10px;
-        color: #e5e7eb;
+        color: #111827;
     }
     .metric-card h3 {
         font-size: 0.95rem;
-        color: #f9fafb;
+        color: #0f172a;
         margin-bottom: 4px;
     }
     .metric-card .value {
         font-size: 1.05rem;
         font-weight: 600;
-        color: #f9fafb;
+        color: #111827;
     }
     .metric-card .sub {
         font-size: 0.8rem;
-        color: #cbd5f5;
+        color: #4b5563;
     }
 
     .chip-row {
@@ -216,9 +233,9 @@ st.markdown("""
         padding: 2px 8px;
         border-radius: 999px;
         font-size: 0.7rem;
-        background: rgba(37,99,235,0.14);      /* soft indigo */
-        border: 1px solid rgba(129,140,248,0.6);
-        color: #e5e7eb;
+        background: rgba(37,99,235,0.08);      /* soft indigo */
+        border: 1px solid rgba(129,140,248,0.5);
+        color: #1f2933;
     }
 
     /* Tables & dataframe tweaks */
@@ -227,7 +244,7 @@ st.markdown("""
         overflow: hidden;
     }
 </style>
-""", unsafe_allow_html=True)  # dashboard palette and nav/button styling [web:394][web:396][web:372]
+""", unsafe_allow_html=True)  # responsive nav + your palette [web:404][web:406]
 
 IST = pytz.timezone('Asia/Kolkata')
 
@@ -240,7 +257,7 @@ if 'last_analysis_time' not in st.session_state:
 if 'last_auto_scan' not in st.session_state:
     st.session_state['last_auto_scan'] = None
 if 'recommendations' not in st.session_state:
-    st.session_state['recommendations'] = {'BTST': [], 'Intraday': [], 'Weekly': [], 'Monthly': []}
+    st.session_state['recommendations'] = {'BTST': [], 'Intraday': [], 'Weekly', 'Monthly': []}
 if 'current_page' not in st.session_state:
     st.session_state['current_page'] = "🔥 Top Stocks"
 
@@ -724,7 +741,7 @@ def render_reco_cards(recs: List[Dict], label: str):
     if not recs:
         st.info(f"Tap 🚀 Run Full Scan to generate {label} ideas.")
         return
-    df = pd.DataFrame(recs).sort_values("score", ascending=False).head(10)
+    df = pd.DataFrame(recs).sort_values("score", ascending=False).head(20 if label == "Top" else 10)
     for _, rec in df.iterrows():
         cmp_ = rec.get('price', 0.0)
         tgt = rec.get('target_1', np.nan)
@@ -768,13 +785,21 @@ NAV_PAGES = [
 ]
 
 def top_nav_bar():
-    st.markdown("<div class='top-nav'>", unsafe_allow_html=True)
+    # Desktop nav (all tabs)
+    st.markdown("<div class='top-nav top-nav-desktop'>", unsafe_allow_html=True)
     cols = st.columns(len(NAV_PAGES))
     for i, label in enumerate(NAV_PAGES):
         with cols[i]:
             if st.button(label, key=f"nav_{label}", use_container_width=True):
                 st.session_state['current_page'] = label
     st.markdown("</div>", unsafe_allow_html=True)
+
+    # Mobile nav (single Top button – all other tabs are hidden via CSS)
+    st.markdown("""
+    <div class='top-nav top-nav-mobile'>
+        <button class='mobile-top-btn'>🔥 Top 20 Stocks</button>
+    </div>
+    """, unsafe_allow_html=True)
 
 # ========= MAIN UI =========
 def main():
@@ -804,13 +829,16 @@ def main():
     if st.session_state['last_analysis_time']:
         st.caption(f"🕒 Last Full Scan: {st.session_state['last_analysis_time'].strftime('%d-%m-%Y %I:%M %p')}")
 
+    # Mobile hint
+    st.info("On mobile you can view Top 20 stocks. For other views (BTST, Intraday, Weekly, Monthly, Groww, Dhan, Configuration), please open this dashboard on a laptop or desktop.", icon="📱")
+
     st.markdown("---")
 
     page = st.session_state['current_page']
 
     if page == "🔥 Top Stocks":
-        st.subheader("🔥 Top 10 Stocks Across All Setups")
-        top_recs = get_top_stocks(limit=10)
+        st.subheader("🔥 Top Stocks (up to 20)")
+        top_recs = get_top_stocks(limit=20)
         render_reco_cards(top_recs, "Top")
 
     elif page == "🌙 BTST":
@@ -954,3 +982,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
