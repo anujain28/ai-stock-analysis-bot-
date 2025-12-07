@@ -138,14 +138,22 @@ _cfg = load_config()
 localS = LocalStorage()
 
 # Session state
-for key, default in [('last_analysis_time', None), ('last_auto_scan', None), 
-                     ('recommendations', {'BTST': [], 'Intraday': [], 'Weekly': [], 'Monthly': []}),
-                     ('current_page', "🔥 Top Stocks"), ('dhan_enabled', False), 
-                     ('dhan_client_id', _cfg.get('dhan_client_id', '')), ('dhan_access_token', ''),
-                     ('dhan_client', None), ('dhan_login_msg', 'Not configured'),
-                     ('notify_enabled', _cfg.get('notify_enabled', False)),
-                     ('telegram_bot_token', _cfg.get('telegram_bot_token', '')),
-                     ('telegram_chat_id', _cfg.get('telegram_chat_id', '')), ('last_pnl_notify', None)]:
+for key, default in [
+    ('last_analysis_time', None),
+    ('last_auto_scan', None),
+    ('recommendations', {'BTST': [], 'Intraday': [], 'Weekly': [], 'Monthly': []}),
+    ('current_page', "🔥 Top Stocks"),
+    ('dhan_enabled', False),
+    ('dhan_client_id', _cfg.get('dhan_client_id', '')),
+    ('dhan_access_token', ''),
+    ('dhan_client', None),
+    ('dhan_login_msg', 'Not configured'),
+    ('notify_enabled', _cfg.get('notify_enabled', False)),
+    ('telegram_bot_token', _cfg.get('telegram_bot_token', '')),
+    ('telegram_chat_id', _cfg.get('telegram_chat_id', '')),
+    ('last_pnl_notify', None),
+    ('last_reco_notify', {}),   # 🔔 track last recommendation sends per slot
+]:
     if key not in st.session_state:
         st.session_state[key] = default
 
@@ -502,23 +510,117 @@ def market_hours_window(dt: datetime):
     end = dt.replace(hour=15, minute=40, second=0, microsecond=0)
     return start <= dt <= end
 
+def fmt_lakhs(x: float) -> str:
+    try:
+        return f"₹{x/1e5:.2f} L"
+    except Exception:
+        return "₹0.00 L"
+
+def project_value(current_value: float, cagr: float, yearly_dividend: float, years: int) -> float:
+    future = current_value * ((1 + cagr) ** years)
+    future += yearly_dividend * years
+    return float(future)
+
+# ---------- 🔔 TELEGRAM RECOMMENDATION SCHEDULER ----------
+
+NOTIFY_SLOTS = ["09:30", "13:30", "15:00"]  # IST slots
+
+def build_telegram_reco_message(now: datetime) -> str:
+    """
+    Build a compact Telegram message with top recommendations per segment.
+    """
+    lines = []
+    lines.append("📊 Auto Stock Ideas (NIFTY 200)")
+    lines.append(f"🕒 {now.strftime('%d-%m-%Y %H:%M')} IST")
+    lines.append("")
+
+    recs_state = st.session_state.get("recommendations", {})
+    for period in ['BTST', 'Intraday', 'Weekly', 'Monthly']:
+        recs = recs_state.get(period, [])
+        if not recs:
+            continue
+        # sort by score desc and take top 3 per bucket
+        tmp = sorted(recs, key=lambda x: x.get("score", 0), reverse=True)[:3]
+        lines.append(f"• {period}:")
+        for r in tmp:
+            tck = r.get("ticker", "")
+            price = r.get("price", 0.0)
+            strength = r.get("signal_strength", "")
+            tgt = r.get("target_1", None)
+            if tgt is not None:
+                lines.append(f"   - {tck}: ₹{price:.2f} → 🎯 ₹{tgt:.2f} ({strength})")
+            else:
+                lines.append(f"   - {tck}: ₹{price:.2f} ({strength})")
+        lines.append("")
+    if len(lines) <= 3:
+        lines.append("No strong signals available right now.")
+    lines.append("#AutoScan #NSE #Nifty200")
+    return "\n".join(lines)
+
+def send_scheduled_recommendations(now: datetime):
+    """
+    Ensure recommendations exist, then send via Telegram.
+    """
+    # Only if user enabled Telegram notifications
+    if not st.session_state.get("notify_enabled", False):
+        return
+
+    # Ensure we have recommendations; if empty, run a scan
+    recs = st.session_state.get("recommendations", {})
+    if not any(recs.get(k) for k in ['BTST', 'Intraday', 'Weekly', 'Monthly']):
+        run_analysis()
+
+    msg = build_telegram_reco_message(now)
+    resp = send_telegram_message(msg)
+    # Optionally show in UI (non-blocking)
+    st.caption("📤 Telegram recommendations sent.")
+    st.session_state['last_pnl_notify'] = now  # reuse if you want
+
+def handle_scheduled_notifications(now: datetime):
+    """
+    Check if current time matches any slot (09:30, 13:30, 15:00 IST)
+    and send recommendations once per slot per day.
+    """
+    if not st.session_state.get("notify_enabled", False):
+        return
+
+    today_str = now.strftime("%Y-%m-%d")
+    last_map = st.session_state.get("last_reco_notify", {}) or {}
+
+    for slot in NOTIFY_SLOTS:
+        hr, mn = map(int, slot.split(":"))
+        scheduled_dt = now.replace(hour=hr, minute=mn, second=0, microsecond=0)
+
+        # 5-minute sending window after each scheduled time
+        window_start = scheduled_dt
+        window_end = scheduled_dt.replace(minute=scheduled_dt.minute + 5)
+
+        already_sent_today = last_map.get(slot) == today_str
+
+        if (now >= window_start) and (now <= window_end) and not already_sent_today:
+            send_scheduled_recommendations(now)
+            last_map[slot] = today_str
+            st.session_state['last_reco_notify'] = last_map
+
 def auto_scan_if_due():
     now = datetime.now(IST)
     last = st.session_state.get('last_auto_scan')
-    if not market_hours_window(now):
-        return
-    should_run = False
-    if last is None:
-        should_run = True
-    else:
-        try:
-            if (now - last).total_seconds() >= 20 * 60:
-                should_run = True
-        except Exception:
+    if market_hours_window(now):
+        should_run = False
+        if last is None:
             should_run = True
-    if should_run:
-        run_analysis()
-        st.caption(f"🕒 Auto-scan executed at {now.strftime('%H:%M:%S')} IST")
+        else:
+            try:
+                if (now - last).total_seconds() >= 20 * 60:
+                    should_run = True
+            except Exception:
+                should_run = True
+        if should_run:
+            run_analysis()
+            st.caption(f"🕒 Auto-scan executed at {now.strftime('%H:%M:%S')} IST")
+
+    # Always check scheduled notifications during market hours
+    handle_scheduled_notifications(now)
 
 def get_top_stocks(limit: int = 10):
     all_recs = []
@@ -633,17 +735,6 @@ def get_recommendation(pct_pnl: float, cagr: float, price_zero: bool) -> str:
         return "HOLD"
     else:
         return "SELL"
-
-def fmt_lakhs(x: float) -> str:
-    try:
-        return f"₹{x/1e5:.2f} L"
-    except Exception:
-        return "₹0.00 L"
-
-def project_value(current_value: float, cagr: float, yearly_dividend: float, years: int) -> float:
-    future = current_value * ((1 + cagr) ** years)
-    future += yearly_dividend * years
-    return float(future)
 
 def render_reco_cards(recs: List[Dict], label: str):
     if not recs:
@@ -929,7 +1020,7 @@ def main():
             if tg_store:
                 st.session_state['telegram_bot_token'] = tg_store.get("bot_token", st.session_state['telegram_bot_token'])
                 st.session_state['telegram_chat_id'] = tg_store.get("chat_id", st.session_state['telegram_chat_id'])
-            notify_toggle = st.checkbox("Enable P&L notifications (30 min)", value=st.session_state['notify_enabled'], key="cfg_notify_toggle")
+            notify_toggle = st.checkbox("Enable P&L notifications (30 min) & auto recommendations", value=st.session_state['notify_enabled'], key="cfg_notify_toggle")
             st.session_state['notify_enabled'] = notify_toggle
             tg_token = st.text_input("Bot Token", value=st.session_state['telegram_bot_token'], key="cfg_tg_token")
             tg_chat = st.text_input("Chat ID", value=st.session_state['telegram_chat_id'], key="cfg_tg_chat")
