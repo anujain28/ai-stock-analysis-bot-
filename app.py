@@ -1002,7 +1002,7 @@ def main():
             years_list = [1, 5, 10, 15, 20]
             proj_data = []
             for y in years_list:
-                v = project_value(₹ total_cmp_val, ₹ portfolio_cagr, ₹ total_yearly_div, y)
+                v = project_value(total_cmp_val, portfolio_cagr, total_yearly_div, y)
                 proj_data.append({"Years": y, "Projected Value (₹)": round(v, 2)})
             st.table(pd.DataFrame(proj_data))
 
