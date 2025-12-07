@@ -796,6 +796,7 @@ def sidebar_nav():
         st.session_state["current_page"] = page
 
 def main():
+    st.sidebar.markdown("[📈 Open Stocks AI Bot](https://airobots.streamlit.app/)")
     st.markdown('<div class="main-header"><h1>🤖 AI Stock Analysis Bot</h1><p>Multi-timeframe scanner • 📈 NIFTY 200 • 🤝 Dhan • 📊 Groww</p><div class="status-badge">Live • IST</div></div>', unsafe_allow_html=True)
     sidebar_nav()
     auto_scan_if_due()
