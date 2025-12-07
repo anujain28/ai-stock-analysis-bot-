@@ -372,7 +372,7 @@ class TechnicalAnalysis:
     @staticmethod
     def adx_trend_strength(df):
         h, l, c = safe_extract(df, 'High'), safe_extract(df, 'Low'), safe_extract(df, 'Close')
-        if len	c) < 25:
+        if len	(c) < 25:
             return False, None, 0
         adx = ta.trend.ADXIndicator(h, l, c, window=14)
         adx_val = safe_scalar(adx.adx().iloc[-1])
