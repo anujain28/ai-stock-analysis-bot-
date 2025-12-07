@@ -109,6 +109,20 @@ st.markdown("""
         background-color: #334155 !important; color: #ffffff !important;
     }
 
+    /* Telegram config buttons – make clearly visible */
+    .st-key-btn_save_settings button,
+    .st-key-btn_send_pnl button {
+        background-color: #0ea5e9 !important;
+        color: #0f172a !important;
+        border-color: #38bdf8 !important;
+        font-weight: 600 !important;
+    }
+    .st-key-btn_save_settings button:hover,
+    .st-key-btn_send_pnl button:hover {
+        background-color: #0284c7 !important;
+        color: #e5f3ff !important;
+    }
+
     /* 🔳 Dark table for portfolio snapshot & projections */
     .dark-table {
         width: 100%;
@@ -539,7 +553,6 @@ def build_telegram_reco_message(now: datetime) -> str:
         recs = recs_state.get(period, [])
         if not recs:
             continue
-        # sort by score desc and take top 3 per bucket
         tmp = sorted(recs, key=lambda x: x.get("score", 0), reverse=True)[:3]
         lines.append(f"• {period}:")
         for r in tmp:
@@ -561,20 +574,17 @@ def send_scheduled_recommendations(now: datetime):
     """
     Ensure recommendations exist, then send via Telegram.
     """
-    # Only if user enabled Telegram notifications
     if not st.session_state.get("notify_enabled", False):
         return
 
-    # Ensure we have recommendations; if empty, run a scan
     recs = st.session_state.get("recommendations", {})
     if not any(recs.get(k) for k in ['BTST', 'Intraday', 'Weekly', 'Monthly']):
         run_analysis()
 
     msg = build_telegram_reco_message(now)
-    resp = send_telegram_message(msg)
-    # Optionally show in UI (non-blocking)
+    send_telegram_message(msg)
     st.caption("📤 Telegram recommendations sent.")
-    st.session_state['last_pnl_notify'] = now  # reuse if you want
+    st.session_state['last_pnl_notify'] = now
 
 def handle_scheduled_notifications(now: datetime):
     """
@@ -591,7 +601,6 @@ def handle_scheduled_notifications(now: datetime):
         hr, mn = map(int, slot.split(":"))
         scheduled_dt = now.replace(hour=hr, minute=mn, second=0, microsecond=0)
 
-        # 5-minute sending window after each scheduled time
         window_start = scheduled_dt
         window_end = scheduled_dt.replace(minute=scheduled_dt.minute + 5)
 
@@ -619,7 +628,6 @@ def auto_scan_if_due():
             run_analysis()
             st.caption(f"🕒 Auto-scan executed at {now.strftime('%H:%M:%S')} IST")
 
-    # Always check scheduled notifications during market hours
     handle_scheduled_notifications(now)
 
 def get_top_stocks(limit: int = 10):
@@ -736,6 +744,29 @@ def get_recommendation(pct_pnl: float, cagr: float, price_zero: bool) -> str:
     else:
         return "SELL"
 
+def suggest_horizon(strength: str, div_yield: float, cagr: float) -> str:
+    """
+    AI-style heuristic for how long to hold:
+    uses growth (CAGR) + dividend profile + strength bucket.
+    """
+    # cagr is decimal (0.12 = 12%)
+    if strength == "Super Strong":
+        if div_yield >= 0.015 or cagr >= 0.18:
+            return "Hold 20+ years (core compounding)"
+        return "Hold 15–20 years"
+    if strength == "Strong":
+        if cagr >= 0.12:
+            return "Hold 10–15 years"
+        return "Hold 7–10 years"
+    if strength == "Medium":
+        if cagr >= 0.08:
+            return "Hold 5–7 years"
+        return "Review in 3–5 years"
+    # Sell bucket
+    if cagr <= 0:
+        return "Exit within 1–2 years; switch to better compounder"
+    return "Tactical hold; reassess within 1–2 years"
+
 def render_reco_cards(recs: List[Dict], label: str):
     if not recs:
         st.info(f"Tap 🚀 Run Full Scan to generate {label} ideas.")
@@ -831,40 +862,61 @@ def main():
                 st.stop()
             st.write("🔍 Raw preview:")
             st.dataframe(df_up.head(), use_container_width=True, hide_index=True)
+
             df = df_up.copy()
             df["_qty"] = pd.to_numeric(df[cols["quantity"]], errors="coerce").fillna(0.0)
             df["_inv"] = pd.to_numeric(df[cols["total investment"]], errors="coerce").fillna(0.0)
             df["_cmp_total"] = pd.to_numeric(df[cols["total cmp"]], errors="coerce").fillna(0.0)
             df["_pnl"] = pd.to_numeric(df[cols["total p&l"]], errors="coerce").fillna(0.0)
             df["_cmp_per_share"] = np.where(df["_qty"] > 0, df["_cmp_total"] / df["_qty"], 0.0)
-            div_yields, div_rupees_list, cagr_list, strength_list = [], [], [], []
+
+            div_yields, div_rupees_list, cagr_list = [], [], []
+            strength_list, pct_pnl_list, reco_list, horizon_list = [], [], [], []
+
             st.info("Fetching dividend yield and CAGR for each stock; defaults used if not found.")
             prog = st.progress(0.0)
             for i, row in df.iterrows():
                 stock_name = str(row[cols["stock name"]])
                 cmp_ps = float(row["_cmp_per_share"])
                 is_zero_price = cmp_ps <= 0.0
+
                 div_y, div_r, cagr = fetch_dividend_and_cagr(stock_name, str(row[cols["isin"]]), cmp_ps)
                 div_yields.append(div_y)
                 div_rupees_list.append(div_r)
                 cagr_list.append(cagr)
+
                 inv_val = float(row["_inv"])
                 cur_val = float(row["_cmp_total"])
                 pct_pnl = ((cur_val - inv_val) / inv_val * 100.0) if inv_val > 0 else 0.0
+                pct_pnl_list.append(pct_pnl)
+
                 strength = classify_strength(pct_pnl, cagr, is_zero_price)
                 strength_list.append(strength)
+
+                reco = get_recommendation(pct_pnl, cagr, is_zero_price)
+                reco_list.append(reco)
+
+                horizon = suggest_horizon(strength, div_y, cagr)
+                horizon_list.append(horizon)
+
                 prog.progress((i + 1) / len(df))
             prog.empty()
+
             df["Dividend Yield"] = div_yields
             df["Dividend/Share (₹)"] = div_rupees_list
             df["CAGR (decimal)"] = cagr_list
             df["CAGR (%)"] = df["CAGR (decimal)"] * 100.0
             df["Strength"] = strength_list
+            df["Pct P&L (%)"] = pct_pnl_list
+            df["Recommendation"] = reco_list
+            df["Suggested Horizon"] = horizon_list
             df["Yearly Dividend (₹)"] = df["Dividend/Share (₹)"] * df["_qty"]
+
             total_inv = float(df["_inv"].sum())
             total_cmp_val = float(df["_cmp_total"].sum())
             total_pnl = float(df["_pnl"].sum())
             total_yearly_div = float(df["Yearly Dividend (₹)"].sum())
+
             st.markdown("### 📈 Portfolio Snapshot (All values in ₹ INR)")
             c1, c2, c3 = st.columns(3)
             with c1:
@@ -873,7 +925,7 @@ def main():
                 st.metric("Current Value", f"₹{total_cmp_val:,.2f}")
             with c3:
                 st.metric("Total P&L", f"₹{total_pnl:,.2f}")
-            # 🔳 Black background snapshot table
+
             snap_data = [
                 {"Metric": "Total Investment", "Value": f"₹{total_inv:,.2f}"},
                 {"Metric": "Current Value", "Value": f"₹{total_cmp_val:,.2f}"},
@@ -888,6 +940,7 @@ def main():
                 portfolio_cagr = float((df["CAGR (decimal)"] * df["_weight"]).sum())
             else:
                 portfolio_cagr = 0.05
+
             st.markdown("#### 🔮 Portfolio Value Projections")
             st.markdown("*Based on weighted CAGR and total yearly dividend. All values shown in Lakhs.*")
             years_list = [1, 5, 10, 15, 20]
@@ -905,11 +958,39 @@ def main():
             proj_df = pd.DataFrame(proj_data)
             st.markdown(proj_df.to_html(classes="dark-table", index=False, escape=False), unsafe_allow_html=True)
 
+            # 🤖 AI recommendations BEFORE recalc section
+            st.markdown("### 🤖 AI Long-Term Recommendations (20-year mindset)")
+            st.write(
+                "Based on each company’s **price growth (CAGR)**, **dividend yield** and your current P&L, "
+                "these suggestions tell you whether to keep the stock for **20+ years, 10–15 years, or review/exit sooner**."
+            )
+            reco_cols = [
+                cols["stock name"],
+                "_inv",
+                "_cmp_total",
+                "_pnl",
+                "Dividend Yield",
+                "CAGR (%)",
+                "Strength",
+                "Recommendation",
+                "Suggested Horizon",
+            ]
+            df_reco = df[reco_cols].rename(columns={
+                cols["stock name"]: "Stock Name",
+                "_inv": "Total Investment (₹)",
+                "_cmp_total": "Total CMP (₹)",
+                "_pnl": "Total P&L (₹)",
+                "Dividend Yield": "Dividend Yield (ratio)",
+                "CAGR (%)": "CAGR (%)",
+            })
+            st.dataframe(df_reco, use_container_width=True, hide_index=True)
+
             st.markdown("### 🛠 Adjust Portfolio & Recalculate")
             st.write("Adjust quantities, CMP, CAGR, and dividend per share, then click **Auto Calculate**.")
             editable_cols = [cols["stock name"], cols["quantity"], cols["total investment"], cols["total cmp"], "Dividend/Share (₹)", "CAGR (%)"]
             edit_df = df[editable_cols].copy()
             edit_df = st.data_editor(edit_df, num_rows="dynamic", use_container_width=True, hide_index=True, key="groww_edit_table")
+
             if st.button("⚙️ Auto Calculate", use_container_width=True, key="btn_auto_calc"):
                 df2 = edit_df.copy()
                 df2["_qty"] = pd.to_numeric(df2[cols["quantity"]], errors="coerce").fillna(0.0)
@@ -920,7 +1001,8 @@ def main():
                 df2["CAGR (decimal)"] = df2["CAGR (%)"] / 100.0
                 df2["_pnl"] = df2["_cmp_total"] - df2["_inv"]
                 df2["_cmp_per_share"] = np.where(df2["_qty"] > 0, df2["_cmp_total"] / df2["_qty"], 0.0)
-                strengths, recommendations = [], []
+
+                strengths, recommendations, horizons = [], [], []
                 for _, r in df2.iterrows():
                     inv2 = float(r["_inv"])
                     cur2 = float(r["_cmp_total"])
@@ -928,20 +1010,27 @@ def main():
                     is_zero_price2 = float(r["_cmp_per_share"]) <= 0.0
                     strength = classify_strength(pct_pnl2, float(r["CAGR (decimal)"]), is_zero_price2)
                     recommendation = get_recommendation(pct_pnl2, float(r["CAGR (decimal)"]), is_zero_price2)
+                    horizon = suggest_horizon(strength, 0.0, float(r["CAGR (decimal)"]))  # dividend unknown here, use CAGR
                     strengths.append(strength)
                     recommendations.append(recommendation)
+                    horizons.append(horizon)
+
                 df2["Strength"] = strengths
                 df2["Recommendation"] = recommendations
+                df2["Suggested Horizon"] = horizons
                 df2["Yearly Dividend (₹)"] = df2["Dividend/Share (₹)"] * df2["_qty"]
+
                 total_inv2 = float(df2["_inv"].sum())
                 total_cmp_val2 = float(df2["_cmp_total"].sum())
                 total_pnl2 = float(df2["_pnl"].sum())
                 total_yearly_div2 = float(df2["Yearly Dividend (₹)"].sum())
+
                 if total_cmp_val2 > 0:
                     df2["_weight"] = df2["_cmp_total"] / total_cmp_val2
                     portfolio_cagr2 = float((df2["CAGR (decimal)"] * df2["_weight"]).sum())
                 else:
                     portfolio_cagr2 = 0.05
+
                 st.markdown("#### 🔁 Recalculated Snapshot (All values in ₹ INR)")
                 c1, c2, c3 = st.columns(3)
                 with c1:
@@ -950,7 +1039,7 @@ def main():
                     st.metric("Current Value", f"₹{total_cmp_val2:,.2f}")
                 with c3:
                     st.metric("Total P&L", f"₹{total_pnl2:,.2f}")
-                # 🔳 Black background recalculated snapshot table
+
                 snap2_data = [
                     {"Metric": "Total Investment", "Value": f"₹{total_inv2:,.2f}"},
                     {"Metric": "Current Value", "Value": f"₹{total_cmp_val2:,.2f}"},
@@ -976,8 +1065,26 @@ def main():
                 st.markdown(proj2_df.to_html(classes="dark-table", index=False, escape=False), unsafe_allow_html=True)
 
                 st.markdown("#### 📋 Detailed Results with Recommendations (₹ INR)")
-                show_cols = [cols["stock name"], cols["quantity"], cols["total investment"], cols["total cmp"], "_pnl", "Dividend/Share (₹)", "Yearly Dividend (₹)", "CAGR (%)", "Strength", "Recommendation"]
-                df_show = df2[show_cols].rename(columns={cols["stock name"]: "Stock Name", cols["quantity"]: "Quantity", cols["total investment"]: "Total Investment (₹)", cols["total cmp"]: "Total CMP (₹)", "_pnl": "Total P&L (₹)"})
+                show_cols = [
+                    cols["stock name"],
+                    cols["quantity"],
+                    cols["total investment"],
+                    cols["total cmp"],
+                    "_pnl",
+                    "Dividend/Share (₹)",
+                    "Yearly Dividend (₹)",
+                    "CAGR (%)",
+                    "Strength",
+                    "Recommendation",
+                    "Suggested Horizon",
+                ]
+                df_show = df2[show_cols].rename(columns={
+                    cols["stock name"]: "Stock Name",
+                    cols["quantity"]: "Quantity",
+                    cols["total investment"]: "Total Investment (₹)",
+                    cols["total cmp"]: "Total CMP (₹)",
+                    "_pnl": "Total P&L (₹)",
+                })
                 st.dataframe(df_show, use_container_width=True, hide_index=True)
         else:
             st.info("Choose your Groww CSV/XLS/XLSX file to see advanced insights here.")
