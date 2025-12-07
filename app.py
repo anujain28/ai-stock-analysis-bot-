@@ -1137,7 +1137,6 @@ def main():
                     tg_resp = send_telegram_message(text) if tg_token and tg_chat else {"info": "Telegram not configured"}
                     st.success("Triggered P&L send. Check Telegram.")
                     st.json({"telegram": tg_resp})
-           st.sidebar.markdown("[📈 Stocks AI Bot](https://airobots.streamlit.app/)")
-if __name__ == "__main__":
+    if __name__ == "__main__":
     main()
 
