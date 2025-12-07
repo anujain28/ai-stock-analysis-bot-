@@ -787,16 +787,37 @@ def render_reco_cards(recs: List[Dict], label: str):
             st.markdown(f"<div class='sub'>🧠 Reason: {reason}</div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-NAV_PAGES = ["🔥 Top Stocks", "🌙 BTST", "⚡ Intraday", "📆 Weekly", "📅 Monthly", "📊 Groww", "🤝 Dhan", "⚙️ Configuration"]
+# 👉 MF Analysis tab added between Dhan and Configuration
+NAV_PAGES = [
+    "🔥 Top Stocks",
+    "🌙 BTST",
+    "⚡ Intraday",
+    "📆 Weekly",
+    "📅 Monthly",
+    "📊 Groww",
+    "🤝 Dhan",
+    "📈 MF Analysis",
+    "⚙️ Configuration",
+]
 
 def sidebar_nav():
     with st.sidebar:
         st.markdown("### 📂 Views")
-        page = st.radio("Navigation", NAV_PAGES, index=NAV_PAGES.index(st.session_state.get("current_page", "🔥 Top Stocks")), label_visibility="collapsed")
+        page = st.radio(
+            "Navigation",
+            NAV_PAGES,
+            index=NAV_PAGES.index(st.session_state.get("current_page", "🔥 Top Stocks")),
+            label_visibility="collapsed",
+        )
         st.session_state["current_page"] = page
 
 def main():
-    st.markdown('<div class="main-header"><h1>🤖 AI Stock Analysis Bot</h1><p>Multi-timeframe scanner • 📈 NIFTY 200 • 🤝 Dhan • 📊 Groww</p><div class="status-badge">Live • IST</div></div>', unsafe_allow_html=True)
+    st.markdown(
+        '<div class="main-header"><h1>🤖 AI Stock Analysis Bot</h1>'
+        '<p>Multi-timeframe scanner • 📈 NIFTY 200 • 🤝 Dhan • 📊 Groww</p>'
+        '<div class="status-badge">Live • IST</div></div>',
+        unsafe_allow_html=True,
+    )
     sidebar_nav()
     auto_scan_if_due()
     c1, c2 = st.columns([3, 1.2])
@@ -1076,6 +1097,14 @@ def main():
         else:
             st.info("Enable Dhan above to view and refresh your portfolio.")
 
+    elif page == "📈 MF Analysis":
+        st.subheader("📈 Mutual Fund Analysis")
+        st.markdown(
+            '[🔗 Open Mutual Fund Analysis App](https://airobotsmf.streamlit.app/)',
+            unsafe_allow_html=False,
+        )
+        st.info("This opens the separate Mutual Fund AI Analysis dashboard in a new tab.")
+
     elif page == "⚙️ Configuration":
         st.markdown("### ⚙️ App Configuration")
 
@@ -1116,7 +1145,7 @@ def main():
             st.session_state['telegram_bot_token'] = tg_token
             st.session_state['telegram_chat_id'] = tg_chat
 
-            # Summary dark table for Telegram config
+            # Summary dark table for Telegram config (no MF link here now)
             tg_rows = [
                 {"Field": "Bot Token", "Value": tg_token or "Not set"},
                 {"Field": "Chat ID", "Value": tg_chat or "Not set"},
