@@ -372,7 +372,7 @@ class TechnicalAnalysis:
     @staticmethod
     def adx_trend_strength(df):
         h, l, c = safe_extract(df, 'High'), safe_extract(df, 'Low'), safe_extract(df, 'Close')
-        if len	(c) < 25:
+        if len(c) < 25:
             return False, None, 0
         adx = ta.trend.ADXIndicator(h, l, c, window=14)
         adx_val = safe_scalar(adx.adx().iloc[-1])
@@ -1075,7 +1075,8 @@ def main():
                     )
         else:
             st.info("Enable Dhan above to view and refresh your portfolio.")
-        elif page == "⚙️ Configuration":
+
+    elif page == "⚙️ Configuration":
         st.markdown("### ⚙️ App Configuration")
 
         # Only Telegram configuration, in black table-editor style
@@ -1115,15 +1116,11 @@ def main():
             st.session_state['telegram_bot_token'] = tg_token
             st.session_state['telegram_chat_id'] = tg_chat
 
-            # Summary dark table for Telegram config + MF link row (NEW)
+            # Summary dark table for Telegram config
             tg_rows = [
                 {"Field": "Bot Token", "Value": tg_token or "Not set"},
                 {"Field": "Chat ID", "Value": tg_chat or "Not set"},
                 {"Field": "Notifications", "Value": "Enabled" if notify_toggle else "Disabled"},
-                {
-                    "Field": "MF Analysis",
-                    "Value": '<a href="https://airobotsmf.streamlit.app/" target="_blank">Open MF Analysis App</a>',
-                },
             ]
             tg_df = pd.DataFrame(tg_rows)
             st.markdown(tg_df.to_html(classes="dark-table", index=False, escape=False), unsafe_allow_html=True)
@@ -1140,6 +1137,7 @@ def main():
                     tg_resp = send_telegram_message(text) if tg_token and tg_chat else {"info": "Telegram not configured"}
                     st.success("Triggered P&L send. Check Telegram.")
                     st.json({"telegram": tg_resp})
-          st.sidebar.markdown("[📈 Stocks AI Bot](https://airobots.streamlit.app/)")
+           st.sidebar.markdown("[📈 Stocks AI Bot](https://airobots.streamlit.app/)")
 if __name__ == "__main__":
     main()
+
