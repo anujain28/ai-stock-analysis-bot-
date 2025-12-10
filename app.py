@@ -1161,6 +1161,7 @@ def main():
                     )
         else:
             st.info("Enable Dhan above to view and refresh your portfolio.")
+        else
         elif page == "📊 Dhan Analysis":
         st.subheader("📊 Dhan Holdings – Multi‑Timeframe AI Analysis")
 
