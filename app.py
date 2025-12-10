@@ -19,7 +19,7 @@ import pandas as pd
 import numpy as np
 import yfinance as yf
 import ta
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Dict, List, Optional
 import pytz
 import requests
@@ -217,7 +217,14 @@ def regenerate_nifty200_csv_from_master():
     df_out["YF_TICKER"] = df_out["SYMBOL"].apply(lambda s: f"{s}.NS")
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     df_out.to_csv(NIFTY200_CSV, index=False)
-    load_nifty200_universe.clear()
+    # Clear cache of the loader if supported
+    try:
+        st.cache_data.clear()
+    except Exception:
+        try:
+            load_nifty200_universe.clear()
+        except Exception:
+            pass
     global STOCK_UNIVERSE, NIFTY_YF_MAP
     STOCK_UNIVERSE, NIFTY_YF_MAP = load_nifty200_universe()
     return True
@@ -391,7 +398,7 @@ class TechnicalAnalysis:
         lower = safe_scalar(bb.bollinger_lband().iloc[-1])
         upper = safe_scalar(bb.bollinger_hband().iloc[-1])
         price = safe_scalar(c.iloc[-1])
-        bandwidth = (upper - lower) / price * 100
+        bandwidth = (upper - lower) / price * 100 if price and not np.isnan(price) else 0
         if price < lower * 1.02 and bandwidth < 10:
             return True, "BB Squeeze Breakout Setup", 25
         return False, None, 0
@@ -404,6 +411,9 @@ class TechnicalAnalysis:
             return False, None, 0
         avg_vol = v.rolling(20).mean().iloc[-1]
         cur_vol = v.iloc[-1]
+        # guards for indexing
+        if len(c) < 2 or pd.isna(c.iloc[-1]) or pd.isna(c.iloc[-2]):
+            return False, None, 0
         chg = ((c.iloc[-1] - c.iloc[-2]) / c.iloc[-2]) * 100
         if cur_vol > avg_vol * 1.5 and chg > 1:
             return True, f"Volume Spike with Price Up ({chg:.1f}%)", 30
@@ -512,7 +522,7 @@ def analyze_multiple_stocks(tickers: List[str], period_type: str, max_results: i
     out = []
     if not tickers:
         return out
-    bar = st.progress(0.0)
+    bar = st.progress(0)
     txt = st.empty()
     for i, tck in enumerate(tickers):
         txt.text(f"🔍 Analyzing {period_type}: {tck} ({i+1}/{len(tickers)})")
@@ -520,7 +530,10 @@ def analyze_multiple_stocks(tickers: List[str], period_type: str, max_results: i
         res = analyze_stock(tck, period_type)
         if res:
             out.append(res)
-    bar.empty()
+    try:
+        bar.empty()
+    except Exception:
+        pass
     txt.empty()
     return sorted(out, key=lambda x: x['score'], reverse=True)[:max_results]
 
@@ -570,7 +583,11 @@ def build_telegram_reco_message(now: datetime) -> str:
             strength = r.get("signal_strength", "")
             tgt = r.get("target_1", None)
             if tgt is not None:
-                lines.append(f"   - {tck}: ₹{price:.2f} → 🎯 ₹{tgt:.2f} ({strength})")
+                try:
+                    tgt_fmt = f"{float(tgt):.2f}"
+                except Exception:
+                    tgt_fmt = str(tgt)
+                lines.append(f"   - {tck}: ₹{price:.2f} → 🎯 ₹{tgt_fmt} ({strength})")
             else:
                 lines.append(f"   - {tck}: ₹{price:.2f} ({strength})")
         lines.append("")
@@ -601,7 +618,7 @@ def handle_scheduled_notifications(now: datetime):
         hr, mn = map(int, slot.split(":"))
         scheduled_dt = now.replace(hour=hr, minute=mn, second=0, microsecond=0)
         window_start = scheduled_dt
-        window_end = scheduled_dt.replace(minute=scheduled_dt.minute + 5)
+        window_end = scheduled_dt + timedelta(minutes=5)
         already_sent_today = last_map.get(slot) == today_str
 
         if (now >= window_start) and (now <= window_end) and not already_sent_today:
@@ -769,12 +786,26 @@ def render_reco_cards(recs: List[Dict], label: str):
     for _, rec in df.iterrows():
         cmp_ = rec.get('price', 0.0)
         tgt = rec.get('target_1', np.nan)
-        diff = tgt - cmp_ if tgt is not None and not np.isnan(tgt) else np.nan
-        profit_pct = (diff / cmp_ * 100) if cmp_ and not np.isnan(diff) else np.nan
+        # safe formatting for target (avoid attempting {:.2f} on NaN)
+        if tgt is None or (isinstance(tgt, float) and np.isnan(tgt)):
+            tgt_display = "—"
+            diff = np.nan
+            profit_pct = np.nan
+        else:
+            try:
+                tgt_val = float(tgt)
+                tgt_display = f"{tgt_val:.2f}"
+                diff = tgt_val - cmp_
+                profit_pct = (diff / cmp_ * 100) if cmp_ else np.nan
+            except Exception:
+                tgt_display = str(tgt)
+                diff = np.nan
+                profit_pct = np.nan
+
         reason = rec.get('reasons', '')
         st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
         st.markdown(f"<h3>{rec.get('ticker','')} • {rec.get('signal_strength','')} ⚡</h3>", unsafe_allow_html=True)
-        st.markdown(f"<div class='value'>💰 CMP: ₹{cmp_:.2f}  | 🎯 Target: ₹{tgt:.2f}</div>", unsafe_allow_html=True)
+        st.markdown(f"<div class='value'>💰 CMP: ₹{cmp_:.2f}  | 🎯 Target: ₹{tgt_display}</div>", unsafe_allow_html=True)
         chip_html = "<div class='chip-row'>"
         chip_html += f"<span class='chip'>⭐ Score: {int(rec.get('score',0))}</span>"
         chip_html += f"<span class='chip'>⏱ {rec.get('timeframe','')}</span>"
@@ -822,10 +853,10 @@ def main():
     auto_scan_if_due()
     c1, c2 = st.columns([3, 1.2])
     with c1:
-        if st.button("🚀 Run Full Scan", type="primary", use_container_width=True):
+        if st.button("🚀 Run Full Scan"):
             run_analysis()
     with c2:
-        if st.button("🔄 Refresh View", key="refresh_btn", use_container_width=True):
+        if st.button("🔄 Refresh View", key="refresh_btn"):
             st.rerun()
     if st.session_state['last_analysis_time']:
         st.caption(f"🕒 Last Full Scan: {st.session_state['last_analysis_time'].strftime('%d-%m-%Y %I:%M %p')}")
@@ -834,7 +865,6 @@ def main():
     page = st.session_state['current_page']
 
     # ----- Main pages -----
-
     if page == "🔥 Top Stocks":
         st.subheader("🔥 Top Stocks (up to 20)")
         top_recs = get_top_stocks(limit=20)
@@ -898,7 +928,7 @@ def main():
             strength_list, pct_pnl_list, reco_list, horizon_list = [], [], [], []
 
             st.info("Fetching dividend yield and CAGR for each stock; defaults used if not found.")
-            prog = st.progress(0.0)
+            prog = st.progress(0)
             for i, row in df.iterrows():
                 stock_name = str(row[cols["stock name"]])
                 cmp_ps = float(row["_cmp_per_share"])
