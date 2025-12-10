@@ -1,5 +1,5 @@
 # Complete Stock Analysis Bot - GROWW + DHAN + CONFIG PAGES MODIFIED
-# All other logic preserved
+# All other logic preserved (plus Dhan Stocks Analysis improvements and Dividends page)
 
 import subprocess, sys
 
@@ -67,7 +67,6 @@ st.markdown("""
 <style>
     .stApp { background-color: #fafafa; color: #111827; }
     body { background-color: #fafafa; color: #111827; }
-
     .main-header {
         background: linear-gradient(120deg, #4f46e5 0%, #0ea5e9 100%);
         padding: 18px; border-radius: 18px; color: white; margin-bottom: 12px;
@@ -414,7 +413,6 @@ class TechnicalAnalysis:
             return False, None, 0
         avg_vol = v.rolling(20).mean().iloc[-1]
         cur_vol = v.iloc[-1]
-        # guards for indexing
         if len(c) < 2 or pd.isna(c.iloc[-1]) or pd.isna(c.iloc[-2]):
             return False, None, 0
         chg = ((c.iloc[-1] - c.iloc[-2]) / c.iloc[-2]) * 100
@@ -468,7 +466,9 @@ def analyze_stock(ticker: str, period_type: str) -> Optional[Dict]:
         'Weekly': {'period': '90d', 'interval': '1d'},
         'Monthly': {'period': '1y', 'interval': '1d'}
     }
-    cfg = cfgs[period_type]
+    cfg = cfgs.get(period_type)
+    if cfg is None:
+        return None
     try:
         t = yf.Ticker(nse_yf_symbol(ticker))
         df = t.history(period=cfg['period'], interval=cfg['interval'], auto_adjust=True)
@@ -564,7 +564,6 @@ def project_value(current_value: float, cagr: float, yearly_dividend: float, yea
     return float(future)
 
 # ---------- TELEGRAM RECOMMENDATION SCHEDULER ----------
-
 NOTIFY_SLOTS = ["09:30", "13:30", "15:00"]  # IST slots
 
 def build_telegram_reco_message(now: datetime) -> str:
@@ -572,7 +571,6 @@ def build_telegram_reco_message(now: datetime) -> str:
     lines.append("📊 Auto Stock Ideas (NIFTY 200)")
     lines.append(f"🕒 {now.strftime('%d-%m-%Y %H:%M')} IST")
     lines.append("")
-
     recs_state = st.session_state.get("recommendations", {})
     for period in ['BTST', 'Intraday', 'Weekly', 'Monthly']:
         recs = recs_state.get(period, [])
@@ -613,17 +611,14 @@ def send_scheduled_recommendations(now: datetime):
 def handle_scheduled_notifications(now: datetime):
     if not st.session_state.get("notify_enabled", False):
         return
-
     today_str = now.strftime("%Y-%m-%d")
     last_map = st.session_state.get("last_reco_notify", {}) or {}
-
     for slot in NOTIFY_SLOTS:
         hr, mn = map(int, slot.split(":"))
         scheduled_dt = now.replace(hour=hr, minute=mn, second=0, microsecond=0)
         window_start = scheduled_dt
         window_end = scheduled_dt + timedelta(minutes=5)
         already_sent_today = last_map.get(slot) == today_str
-
         if (now >= window_start) and (now <= window_end) and not already_sent_today:
             send_scheduled_recommendations(now)
             last_map[slot] = today_str
@@ -789,7 +784,6 @@ def render_reco_cards(recs: List[Dict], label: str):
     for _, rec in df.iterrows():
         cmp_ = rec.get('price', 0.0)
         tgt = rec.get('target_1', np.nan)
-        # safe formatting for target (avoid attempting {:.2f} on NaN)
         if tgt is None or (isinstance(tgt, float) and np.isnan(tgt)):
             tgt_display = "—"
             diff = np.nan
@@ -821,13 +815,281 @@ def render_reco_cards(recs: List[Dict], label: str):
             st.markdown(f"<div class='sub'>🧠 Reason: {reason}</div>", unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
 
-# 👉 MF Analysis tab added between Dhan and Configuration
+# ---------- Dhan Stocks Analysis & Dividends page additions ----------
+
+def analyze_dhan_portfolio_recommendations():
+    """
+    Dhan holdings -> per-stock card:
+    - CMP and present P&L from portfolio
+    - Upcoming dividend only if ex/date is today or future
+    - Recommendation (BUY/HOLD/SELL) with ETA label (BTST/Weekly/Monthly)
+    - If CMP from portfolio is higher than recommended, say "Your CMP is higher than recommended by X%"
+    """
+    df_port, total_pnl = format_dhan_portfolio_table()
+    if df_port is None or df_port.empty:
+        st.info("No Dhan holdings/positions fetched yet. Connect Dhan to fetch holdings.")
+        return
+
+    st.markdown("### 🧾 Dhan Stocks — AI Recommendations (CMP & P&L shown from Dhan portfolio)")
+    st.write("Note: Dividend lines show only future or today's ex/dividend dates (past dates excluded).")
+
+    today_dt = date.today()
+
+    for _, row in df_port.iterrows():
+        stock_name = str(row.get("Stock", "")).strip()
+        cmp_val = float(row.get("CMP", 0.0)) if not pd.isna(row.get("CMP", np.nan)) else np.nan
+        qty = float(row.get("Quantity", 0.0)) if not pd.isna(row.get("Quantity", np.nan)) else 0.0
+        total_cost = float(row.get("Total Cost", 0.0)) if not pd.isna(row.get("Total Cost", np.nan)) else 0.0
+        total_value = float(row.get("Total Value", 0.0)) if not pd.isna(row.get("Total Value", np.nan)) else 0.0
+        pnl = float(row.get("P&L", 0.0)) if not pd.isna(row.get("P&L", np.nan)) else 0.0
+        pct_pnl = (pnl / total_cost * 100.0) if total_cost else 0.0
+
+        yf_sym = nse_yf_symbol(stock_name)
+        targets = {}
+        info = {}
+        try:
+            t = yf.Ticker(yf_sym)
+            info = t.info or {}
+            hist = t.history(period="90d", interval="1d", auto_adjust=True)
+            if hist is not None and not hist.empty:
+                hist = hist.dropna(subset=["Close"]).reset_index()
+                hist.columns = [str(c).capitalize() for c in hist.columns]
+                if len(hist['Close']) >= 14:
+                    targets = TechnicalAnalysis.calculate_targets(hist, float(hist['Close'].iloc[-1]))
+        except Exception:
+            targets = {}
+            info = {}
+
+        target_1 = targets.get('target_1', None)
+        target_2 = targets.get('target_2', None)
+        target_3 = targets.get('target_3', None)
+
+        # Recommendation logic & distance text (only use wording "Your CMP is higher than recommended by X%" when CMP>target)
+        if target_1 is None or np.isnan(cmp_val) or cmp_val == 0:
+            rec = get_recommendation(pct_pnl, 0.05, cmp_val <= 0 if not pd.isna(cmp_val) else True)
+            distance_text = "Target not available"
+            tgt_display = "—"
+        else:
+            tgt_display = f"₹{float(target_1):.2f}"
+            # If CMP higher than target_1 -> display "Your CMP is higher than recommended by X%"
+            if cmp_val > target_1:
+                distance_pct = (cmp_val - target_1) / target_1 * 100 if target_1 else np.nan
+                rec = "SELL"
+                distance_text = f"Your CMP is higher than recommended by {distance_pct:.2f}%"
+            elif cmp_val <= target_1:
+                distance_pct = (target_1 - cmp_val) / cmp_val * 100 if cmp_val else np.nan
+                rec = "BUY"
+                distance_text = f"CMP is lower than recommended target by {distance_pct:.2f}%"
+            else:
+                rec = "HOLD"
+                distance_text = "Consider HOLD"
+
+        # Dividend data: consider fields exDividendDate, dividendDate, nextDividendDate, lastDividendDate
+        upcoming_div_date = None
+        upcoming_div_amount = None
+        try:
+            # prefer exDividendDate or nextDividendDate
+            candidate = None
+            for key in ("exDividendDate", "nextDividendDate", "dividendDate", "lastDividendDate"):
+                if key in info and info.get(key):
+                    candidate = info.get(key)
+                    # candidate might be epoch int or string date
+                    try:
+                        cd = None
+                        # if numeric (epoch)
+                        if isinstance(candidate, (int, float)):
+                            cd = datetime.fromtimestamp(int(candidate)).date()
+                        else:
+                            # try parse ISO-like string
+                            try:
+                                cd = pd.to_datetime(candidate).date()
+                            except Exception:
+                                cd = None
+                        if cd:
+                            # include only today or future dates
+                            if cd >= today_dt:
+                                upcoming_div_date = cd
+                                break
+                            else:
+                                # ignore past dividend dates
+                                upcoming_div_date = None
+                                continue
+                    except Exception:
+                        continue
+            # amount
+            for key in ("lastDividendValue", "dividendRate", "trailingAnnualDividendRate", "dividendYield"):
+                if key in info and info.get(key):
+                    try:
+                        amt = float(info.get(key))
+                        # dividendYield is ratio; convert to per-share if needed
+                        if key == "dividendYield" and cmp_val and not np.isnan(cmp_val) and cmp_val > 0:
+                            upcoming_div_amount = amt * cmp_val
+                        else:
+                            upcoming_div_amount = amt
+                        break
+                    except Exception:
+                        continue
+        except Exception:
+            upcoming_div_date = None
+            upcoming_div_amount = None
+
+        total_upcoming_div_payout = None
+        if upcoming_div_amount is not None and qty:
+            try:
+                total_upcoming_div_payout = upcoming_div_amount * qty
+            except Exception:
+                total_upcoming_div_payout = None
+
+        # Determine ETA/timeframe by running quick analyzers and selecting best-scoring period
+        best_period = None
+        best_score = -1
+        best_summary = None
+        try:
+            for p in ['BTST', 'Intraday', 'Weekly', 'Monthly']:
+                res = analyze_stock(stock_name, p)
+                if res and res.get("score", 0) > best_score:
+                    best_score = res.get("score", 0)
+                    best_period = p
+                    best_summary = res
+        except Exception:
+            best_period = None
+            best_summary = None
+
+        timeframe_label = best_period if best_period else "N/A"
+        eta_text = timeframe_label
+
+        # Render card with CMP and P&L (portfolio values)
+        st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
+        st.markdown(f"<h3>{stock_name} • {rec} • ETA: {eta_text}</h3>", unsafe_allow_html=True)
+        st.markdown(f"<div class='value'>💰 Portfolio CMP: ₹{cmp_val:.2f}  | 🎯 Primary Target: {tgt_display}</div>", unsafe_allow_html=True)
+
+        details = "<div class='chip-row'>"
+        details += f"<span class='chip'>Qty: {int(qty) if qty==int(qty) else qty}</span>"
+        details += f"<span class='chip'>P&L: ₹{pnl:,.2f} ({pct_pnl:.2f}%)</span>"
+        if target_2:
+            details += f"<span class='chip'>Target2: ₹{float(target_2):.2f}</span>"
+        if target_3:
+            details += f"<span class='chip'>Target3: ₹{float(target_3):.2f}</span>"
+        details += "</div>"
+        st.markdown(details, unsafe_allow_html=True)
+
+        # Distance and dividend lines
+        st.markdown(f"<div class='sub'>🔎 {distance_text}</div>", unsafe_allow_html=True)
+        if upcoming_div_date and upcoming_div_amount:
+            div_lines = f"📅 Upcoming ex/div date: {upcoming_div_date.isoformat()} • Per-share: ₹{upcoming_div_amount:.2f}"
+            if total_upcoming_div_payout is not None:
+                div_lines += f" • Expected payout: ₹{total_upcoming_div_payout:,.2f} (for {int(qty)} shares)"
+            st.markdown(f"<div class='sub'>{div_lines}</div>", unsafe_allow_html=True)
+        else:
+            st.markdown(f"<div class='sub'>📭 No upcoming (today/future) dividend info found.</div>", unsafe_allow_html=True)
+
+        # show scanner snippet (if available)
+        if best_summary:
+            reason = best_summary.get("reasons", "")
+            score = best_summary.get("score", 0)
+            strength = best_summary.get("signal_strength", "")
+            st.markdown(f"<div class='sub'>🧠 {eta_text} scanner: {strength} • Score: {score} • {reason}</div>", unsafe_allow_html=True)
+
+        st.markdown("</div>", unsafe_allow_html=True)
+
+@st.cache_data(ttl=60*60)  # cache for 1 hour
+def fetch_universe_upcoming_dividends(limit_symbols: Optional[List[str]] = None):
+    """
+    Scan the NIFTY200 mapping (or given symbols) and return rows for stocks that have an upcoming
+    (today or future) ex-dividend / nextDividendDate / dividendDate value in yfinance info.
+    Returns list of dicts: symbol, yf_ticker, ex_date, per_share_div, estimated_payout (NaN), recommended_buy_flag
+    """
+    rows = []
+    today_dt = date.today()
+    symbols = limit_symbols if limit_symbols else STOCK_UNIVERSE
+    if not symbols:
+        return rows
+    prog_total = len(symbols)
+    # Do a simple loop; this may take time; caller should show progress UI
+    for s in symbols:
+        yf_tkr = NIFTY_YF_MAP.get(s, f"{s}.NS")
+        try:
+            t = yf.Ticker(yf_tkr)
+            info = t.info or {}
+            candidate_date = None
+            for key in ("exDividendDate", "nextDividendDate", "dividendDate"):
+                if key in info and info.get(key):
+                    candidate = info.get(key)
+                    try:
+                        if isinstance(candidate, (int, float)):
+                            cd = datetime.fromtimestamp(int(candidate)).date()
+                        else:
+                            cd = pd.to_datetime(candidate).date()
+                        if cd >= today_dt:
+                            candidate_date = cd
+                            break
+                    except Exception:
+                        continue
+            if not candidate_date:
+                continue
+            # get per-share dividend estimate if available
+            per_share = None
+            for key in ("lastDividendValue", "dividendRate", "trailingAnnualDividendRate", "dividendYield"):
+                if key in info and info.get(key):
+                    try:
+                        val = float(info.get(key))
+                        if key == "dividendYield":
+                            # convert yield to per-share estimate using most recent close
+                            try:
+                                close = None
+                                hist = t.history(period="5d", interval="1d", auto_adjust=True)
+                                if hist is not None and not hist.empty:
+                                    close = float(hist['Close'].iloc[-1])
+                                if close is not None:
+                                    per_share = val * close
+                                else:
+                                    per_share = None
+                            except Exception:
+                                per_share = None
+                        else:
+                            per_share = val
+                        break
+                    except Exception:
+                        continue
+            # run quick scanner to suggest buy/no-buy
+            best = None
+            best_score = -1
+            try:
+                for p in ['BTST', 'Intraday', 'Weekly', 'Monthly']:
+                    res = analyze_stock(s, p)
+                    if res and res.get("score", 0) > best_score:
+                        best_score = res.get("score", 0)
+                        best = res
+            except Exception:
+                best = None
+            recommend_label = "No Buy / Review"
+            if best and best.get("signal_strength", "") in ("STRONG BUY", "BUY") and best.get("score", 0) >= 60:
+                recommend_label = "Recommend Buy"
+            rows.append({
+                "Symbol": s,
+                "YF_Ticker": yf_tkr,
+                "ExDividendDate": candidate_date,
+                "PerShareDividend(₹)": round(per_share,2) if per_share is not None else None,
+                "ScannerScore": best.get("score", None) if best else None,
+                "ScannerSignal": best.get("signal_strength", None) if best else None,
+                "Recommendation": recommend_label
+            })
+        except Exception:
+            continue
+    # sort by nearest ex date
+    rows_sorted = sorted(rows, key=lambda x: x.get("ExDividendDate") or date.max)
+    return rows_sorted
+
+# ---------- END Dividends helpers ----------
+
+# Navigation pages order: put Dividends above Groww per request
 NAV_PAGES = [
     "🔥 Top Stocks",
     "🌙 BTST",
     "⚡ Intraday",
     "📆 Weekly",
     "📅 Monthly",
+    "📣 Dividends",
     "📊 Groww",
     "🤝 Dhan",
     "🧾 Dhan Stocks Analysis",
@@ -846,393 +1108,7 @@ def sidebar_nav():
         )
         st.session_state["current_page"] = page
 
-def analyze_dhan_portfolio_recommendations():
-    """
-    Fetch Dhan holdings and produce per-stock recommendations using AI heuristics:
-    - uses YF history to compute ATR-based targets
-    - compares CMP to target_1 and target_2 to output Buy/Hold/Sell and distance info
-    - shows CMP, present P&L for that stock, upcoming dividend date & amount (if available),
-      and labels recommendation with suggested timeframe (BTST/Intraday/Weekly/Monthly) from scanner
-    """
-    df_port, total_pnl = format_dhan_portfolio_table()
-    if df_port is None or df_port.empty:
-        st.info("No Dhan holdings/positions fetched yet. Connect Dhan to fetch holdings.")
-        return
-
-    st.markdown("### 🧾 Dhan Stocks — AI Recommendations")
-    st.markdown("For each stock below: recommendation (Buy/Hold/Sell), target price, how far CMP is from recommended price, present P&L, and upcoming dividend (if any).")
-    st.write("")  # spacing
-
-    # iterate rows
-    for _, row in df_port.iterrows():
-        stock_name = str(row.get("Stock", "")).strip()
-        # CMP, P&L and quantities from portfolio table
-        cmp_val = float(row.get("CMP", 0.0)) if not pd.isna(row.get("CMP", np.nan)) else np.nan
-        qty = float(row.get("Quantity", 0.0)) if not pd.isna(row.get("Quantity", np.nan)) else 0.0
-        total_cost = float(row.get("Total Cost", 0.0)) if not pd.isna(row.get("Total Cost", np.nan)) else 0.0
-        total_value = float(row.get("Total Value", 0.0)) if not pd.isna(row.get("Total Value", np.nan)) else 0.0
-        pnl = float(row.get("P&L", 0.0)) if not pd.isna(row.get("P&L", np.nan)) else 0.0
-        pct_pnl = (pnl / total_cost * 100.0) if total_cost else 0.0
-
-        # Try to map to yahoo ticker
-        yf_sym = nse_yf_symbol(stock_name)
-        # Fetch recent history for targets & info
-        targets = {}
-        info = {}
-        try:
-            t = yf.Ticker(yf_sym)
-            info = t.info or {}
-            hist = t.history(period="90d", interval="1d", auto_adjust=True)
-            if hist is not None and not hist.empty:
-                hist = hist.dropna(subset=["Close"])
-                hist = hist.reset_index()
-                hist.columns = [str(c).capitalize() for c in hist.columns]
-                if len(hist['Close']) >= 14:
-                    targets = TechnicalAnalysis.calculate_targets(hist, float(hist['Close'].iloc[-1]))
-        except Exception:
-            targets = {}
-            info = {}
-
-        target_1 = targets.get('target_1', None)
-        target_2 = targets.get('target_2', None)
-        target_3 = targets.get('target_3', None)
-
-        # Determine recommendation rules:
-        if target_1 is None or np.isnan(cmp_val) or cmp_val == 0:
-            # fallback using P&L and heuristic
-            rec = get_recommendation(pct_pnl, 0.05, cmp_val <= 0 if not pd.isna(cmp_val) else True)
-            distance_text = "Target not available"
-            tgt_display = "—"
-        else:
-            tgt_display = f"₹{float(target_1):.2f}"
-            # comparison rules:
-            if cmp_val <= target_1:
-                rec = "BUY"
-                distance_pct = (target_1 - cmp_val) / cmp_val * 100 if cmp_val else np.nan
-                distance_text = f"CMP is lower than recommended by {distance_pct:.2f}%"
-            elif cmp_val > target_1 and (target_2 is not None and cmp_val <= target_2):
-                rec = "HOLD"
-                distance_pct = (cmp_val - target_1) / target_1 * 100 if target_1 else np.nan
-                distance_text = f"CMP is {distance_pct:.2f}% above the primary target (consider HOLD)"
-            else:
-                rec = "SELL"
-                ref = target_2 if (target_2 is not None) else target_1
-                distance_pct = (cmp_val - ref) / ref * 100 if ref else np.nan
-                distance_text = f"CMP is higher by {distance_pct:.2f}% — CMP is still higher than recommended price"
-
-        # Get upcoming dividend info if available from info dict
-        upcoming_div_date = None
-        upcoming_div_amount = None
-        try:
-            # yfinance 'dividendDate' is epoch int if available
-            div_epoch = info.get("dividendDate") or info.get("lastDividendDate")
-            if div_epoch:
-                # some providers return epoch in seconds
-                try:
-                    dv = datetime.fromtimestamp(int(div_epoch)).date()
-                except Exception:
-                    # maybe it's already a date-like string
-                    dv = None
-                upcoming_div_date = dv
-
-            # amount could be lastDividendValue or dividendRate or trailing annual dividend
-            div_amt = info.get("lastDividendValue") or info.get("dividendRate") or info.get("trailingAnnualDividendRate")
-            if div_amt:
-                upcoming_div_amount = float(div_amt)
-        except Exception:
-            upcoming_div_date = None
-            upcoming_div_amount = None
-
-        # If we have only dividend yield, estimate amount = yield * CMP
-        if upcoming_div_amount is None and info:
-            try:
-                dy = info.get("dividendYield")
-                if dy and not np.isnan(dy) and not pd.isna(cmp_val):
-                    upcoming_div_amount = float(dy) * float(cmp_val)
-            except Exception:
-                pass
-
-        # Multiply per-share dividend by quantity to get expected payout
-        total_upcoming_div_payout = None
-        if upcoming_div_amount is not None and qty:
-            try:
-                total_upcoming_div_payout = upcoming_div_amount * qty
-            except Exception:
-                total_upcoming_div_payout = None
-
-        # Determine suggested timeframe label using analyzer: run analyze_stock for each period and pick best score
-        best_period = None
-        best_score = -1
-        best_summary = None
-        try:
-            for p in ['BTST', 'Intraday', 'Weekly', 'Monthly']:
-                res = analyze_stock(stock_name, p)
-                if res and res.get("score", 0) > best_score:
-                    best_score = res.get("score", 0)
-                    best_period = p
-                    best_summary = res
-        except Exception:
-            best_period = None
-            best_summary = None
-
-        timeframe_label = best_period if best_period else "N/A"
-
-        # Render card for this stock
-        st.markdown("<div class='metric-card'>", unsafe_allow_html=True)
-        st.markdown(f"<h3>{stock_name} • {rec} • {timeframe_label}</h3>", unsafe_allow_html=True)
-        st.markdown(f"<div class='value'>💰 CMP: ₹{cmp_val:.2f}  | 🎯 Primary Target: {tgt_display}</div>", unsafe_allow_html=True)
-
-        details = "<div class='chip-row'>"
-        details += f"<span class='chip'>Qty: {int(qty) if qty==int(qty) else qty}</span>"
-        details += f"<span class='chip'>P&L: ₹{pnl:,.2f} ({pct_pnl:.2f}%)</span>"
-        if target_2:
-            details += f"<span class='chip'>Target2: ₹{float(target_2):.2f}</span>"
-        if target_3:
-            details += f"<span class='chip'>Target3: ₹{float(target_3):.2f}</span>"
-        details += "</div>"
-        st.markdown(details, unsafe_allow_html=True)
-
-        # Dividend display
-        div_lines = ""
-        if upcoming_div_date and upcoming_div_amount:
-            div_lines = f"📅 Upcoming ex/div date: {upcoming_div_date.isoformat()} • Per-share: ₹{upcoming_div_amount:.2f}"
-            if total_upcoming_div_payout is not None:
-                div_lines += f" • Expected payout: ₹{total_upcoming_div_payout:,.2f} (for {int(qty)} shares)"
-        elif upcoming_div_amount and not upcoming_div_date:
-            div_lines = f"💸 Last/Est. dividend per share: ₹{upcoming_div_amount:.2f}"
-            if total_upcoming_div_payout is not None:
-                div_lines += f" • Expected payout: ₹{total_upcoming_div_payout:,.2f}"
-        else:
-            div_lines = "📭 No upcoming dividend info found."
-
-        st.markdown(f"<div class='sub'>🔎 {distance_text}</div>", unsafe_allow_html=True)
-        st.markdown(f"<div class='sub'>{div_lines}</div>", unsafe_allow_html=True)
-
-        # If analyzer summary exists, show short reason snippet
-        if best_summary:
-            reason = best_summary.get("reasons", "")
-            score = best_summary.get("score", 0)
-            strength = best_summary.get("signal_strength", "")
-            st.markdown(f"<div class='sub'>🧠 {timeframe_label} scanner: {strength} • Score: {score} • {reason}</div>", unsafe_allow_html=True)
-
-        st.markdown("</div>", unsafe_allow_html=True)
-
-# ---------- END helper for Dhan stock analysis ----------
-
-def build_telegram_reco_message(now: datetime) -> str:
-    lines = []
-    lines.append("📊 Auto Stock Ideas (NIFTY 200)")
-    lines.append(f"🕒 {now.strftime('%d-%m-%Y %H:%M')} IST")
-    lines.append("")
-
-    recs_state = st.session_state.get("recommendations", {})
-    for period in ['BTST', 'Intraday', 'Weekly', 'Monthly']:
-        recs = recs_state.get(period, [])
-        if not recs:
-            continue
-        tmp = sorted(recs, key=lambda x: x.get("score", 0), reverse=True)[:3]
-        lines.append(f"• {period}:")
-        for r in tmp:
-            tck = r.get("ticker", "")
-            price = r.get("price", 0.0)
-            strength = r.get("signal_strength", "")
-            tgt = r.get("target_1", None)
-            if tgt is not None:
-                try:
-                    tgt_fmt = f"{float(tgt):.2f}"
-                except Exception:
-                    tgt_fmt = str(tgt)
-                lines.append(f"   - {tck}: ₹{price:.2f} → 🎯 ₹{tgt_fmt} ({strength})")
-            else:
-                lines.append(f"   - {tck}: ₹{price:.2f} ({strength})")
-        lines.append("")
-    if len(lines) <= 3:
-        lines.append("No strong signals available right now.")
-    lines.append("#AutoScan #NSE #Nifty200")
-    return "\n".join(lines)
-
-def send_scheduled_recommendations(now: datetime):
-    if not st.session_state.get("notify_enabled", False):
-        return
-    recs = st.session_state.get("recommendations", {})
-    if not any(recs.get(k) for k in ['BTST', 'Intraday', 'Weekly', 'Monthly']):
-        run_analysis()
-    msg = build_telegram_reco_message(now)
-    send_telegram_message(msg)
-    st.caption("📤 Telegram recommendations sent.")
-    st.session_state['last_pnl_notify'] = now
-
-def handle_scheduled_notifications(now: datetime):
-    if not st.session_state.get("notify_enabled", False):
-        return
-
-    today_str = now.strftime("%Y-%m-%d")
-    last_map = st.session_state.get("last_reco_notify", {}) or {}
-
-    for slot in NOTIFY_SLOTS:
-        hr, mn = map(int, slot.split(":"))
-        scheduled_dt = now.replace(hour=hr, minute=mn, second=0, microsecond=0)
-        window_start = scheduled_dt
-        window_end = scheduled_dt + timedelta(minutes=5)
-        already_sent_today = last_map.get(slot) == today_str
-
-        if (now >= window_start) and (now <= window_end) and not already_sent_today:
-            send_scheduled_recommendations(now)
-            last_map[slot] = today_str
-            st.session_state['last_reco_notify'] = last_map
-
-def auto_scan_if_due():
-    now = datetime.now(IST)
-    last = st.session_state.get('last_auto_scan')
-    if market_hours_window(now):
-        should_run = False
-        if last is None:
-            should_run = True
-        else:
-            try:
-                if (now - last).total_seconds() >= 20 * 60:
-                    should_run = True
-            except Exception:
-                should_run = True
-        if should_run:
-            run_analysis()
-            st.caption(f"🕒 Auto-scan executed at {now.strftime('%H:%M:%S')} IST")
-    handle_scheduled_notifications(now)
-
-def get_top_stocks(limit: int = 10):
-    all_recs = []
-    for period in ['BTST', 'Intraday', 'Weekly', 'Monthly']:
-        for r in st.session_state['recommendations'].get(period, []):
-            rec = dict(r)
-            rec['period'] = period
-            all_recs.append(rec)
-    if not all_recs:
-        return []
-    df_all = pd.DataFrame(all_recs).sort_values("score", ascending=False)
-    seen = set()
-    unique_rows = []
-    for _, row in df_all.iterrows():
-        t = row.get('ticker')
-        if t not in seen:
-            seen.add(t)
-            unique_rows.append(row)
-        if len(unique_rows) >= limit:
-            break
-    if not unique_rows:
-        return []
-    return pd.DataFrame(unique_rows).to_dict(orient="records")
-
-def load_groww_file(uploaded_file):
-    name = uploaded_file.name.lower()
-    try:
-        if name.endswith(".csv"):
-            df = pd.read_csv(uploaded_file, sep=None, engine="python")
-        elif name.endswith((".xls", ".xlsx")):
-            df = pd.read_excel(uploaded_file)
-        else:
-            st.error("Only CSV, XLS, or XLSX files are supported.")
-            return pd.DataFrame()
-        return df
-    except Exception as e:
-        st.error(f"Error reading file: {e}")
-        return pd.DataFrame()
-
-def map_groww_columns(df: pd.DataFrame):
-    norm_cols = {c.lower().strip(): c for c in df.columns}
-    required_map = {
-        "stock name": "stock name",
-        "isin": "isin",
-        "quantity": "quantity",
-        "average buy price per share": "average buy price per share",
-        "total investment": "total investment",
-        "total cmp": "total cmp",
-        "total p&l": "total p&l",
-    }
-    out, missing = {}, []
-    for logical_key, norm_header in required_map.items():
-        if norm_header in norm_cols:
-            out[logical_key] = norm_cols[norm_header]
-        else:
-            missing.append(logical_key)
-    if missing:
-        msg = (
-            "Columns must match this Groww template exactly: "
-            "'Stock Name, ISIN, Quantity, Average buy price per share, "
-            "Total Investment, Total CMP, TOTAL P&L'. "
-            "Missing or mismatched: " + ", ".join(missing)
-        )
-        return None, msg
-    return out, None
-
-def fetch_dividend_and_cagr(stock_name: str, isin: str, cmp_value: float):
-    sym = stock_name.split()[0].upper().strip() if stock_name else ""
-    yf_ticker = NIFTY_YF_MAP.get(sym, None)
-    if not yf_ticker and sym:
-        yf_ticker = f"{sym}.NS"
-    div_yield, div_rupees, cagr = 0.0, 0.0, 0.05
-    if not yf_ticker:
-        return div_yield, div_rupees, cagr
-    try:
-        t = yf.Ticker(yf_ticker)
-        info = t.info or {}
-        raw_yield = info.get("dividendYield")
-        if raw_yield is not None:
-            div_yield = float(raw_yield)
-        if cmp_value and div_yield:
-            div_rupees = div_yield * cmp_value
-        hist = t.history(period="10y")
-        if hist is not None and not hist.empty:
-            hist = hist.dropna(subset=["Close"])
-            first_price = float(hist["Close"].iloc[0])
-            last_price = float(hist["Close"].iloc[-1])
-            years = max((hist.index[-1] - hist.index[0]).days / 365.0, 1.0)
-            if first_price > 0 and years > 0:
-                cagr = (last_price / first_price) ** (1.0 / years) - 1.0
-    except Exception:
-        pass
-    return float(div_yield), float(div_rupees), float(cagr)
-
-def classify_strength(pct_pnl: float, cagr: float, price_zero: bool) -> str:
-    if price_zero:
-        return "Super Strong"
-    if cagr >= 0.15 and pct_pnl >= 20:
-        return "Super Strong"
-    if cagr >= 0.10 and pct_pnl >= 0:
-        return "Strong"
-    if cagr >= 0.05 or pct_pnl > -10:
-        return "Medium"
-    if cagr >= 0.0 or pct_pnl > -30:
-        return "Weak"
-    return "Super Weak"
-
-def get_recommendation(pct_pnl: float, cagr: float, price_zero: bool) -> str:
-    strength = classify_strength(pct_pnl, cagr, price_zero)
-    if strength in ["Super Strong", "Strong"]:
-        return "BUY"
-    elif strength == "Medium":
-        return "HOLD"
-    else:
-        return "SELL"
-
-def suggest_horizon(strength: str, div_yield: float, cagr: float) -> str:
-    if strength == "Super Strong":
-        if div_yield >= 0.015 or cagr >= 0.18:
-            return "Hold 20+ years (core compounding)"
-        return "Hold 15–20 years"
-    if strength == "Strong":
-        if cagr >= 0.12:
-            return "Hold 10–15 years"
-        return "Hold 7–10 years"
-    if strength == "Medium":
-        if cagr >= 0.08:
-            return "Hold 5–7 years"
-        return "Review in 3–5 years"
-    if strength == "Weak":
-        if cagr > 0:
-            return "Tactical hold; reassess within 1–2 years"
-        return "Exit gradually over 1–2 years"
-    return "Exit within 6–12 months; rotate to better compounders"
-
+# ---------- rest of app (UI and pages) ----------
 def main():
     st.markdown(
         '<div class="main-header"><h1>🤖 AI Stock Analysis Bot</h1>'
@@ -1251,7 +1127,7 @@ def main():
             st.rerun()
     if st.session_state['last_analysis_time']:
         st.caption(f"🕒 Last Full Scan: {st.session_state['last_analysis_time'].strftime('%d-%m-%Y %I:%M %p')}")
-    st.info("On mobile you can view Top 20 stocks. For other views (BTST, Intraday, Weekly, Monthly, Groww, Dhan, Configuration), please open this dashboard on a laptop or desktop.", icon="📱")
+    st.info("On mobile you can view Top 20 stocks. For other views (BTST, Intraday, Weekly, Monthly, Dividends, Groww, Dhan, Configuration), please open this dashboard on a laptop or desktop.", icon="📱")
     st.markdown("---")
     page = st.session_state['current_page']
 
@@ -1288,6 +1164,19 @@ def main():
         for r in recs:
             r.setdefault("period", "Monthly")
         render_reco_cards(recs, "Monthly")
+
+    elif page == "📣 Dividends":
+        st.subheader("📣 Upcoming Dividends (NIFTY 200) — today or future only")
+        st.markdown("This scans NIFTY 200 tickers and lists only stocks with an upcoming ex-dividend / nextDividendDate that is today or in the future. It also shows a quick buy/no-buy suggestion from the scanner.")
+        with st.spinner("Scanning universe for upcoming dividends (may take a minute)..."):
+            rows = fetch_universe_upcoming_dividends()
+        if not rows:
+            st.info("No upcoming (today/future) dividend dates found in the NIFTY 200 mapping.")
+        else:
+            df_divs = pd.DataFrame(rows)
+            # friendly formatting
+            df_divs["ExDividendDate"] = df_divs["ExDividendDate"].apply(lambda d: d.isoformat() if isinstance(d, date) else d)
+            st.dataframe(df_divs[["Symbol","YF_Ticker","ExDividendDate","PerShareDividend(₹)","Recommendation","ScannerScore","ScannerSignal"]], use_container_width=True, hide_index=True)
 
     elif page == "📊 Groww":
         st.subheader("📊 Groww Portfolio Analysis (CSV / Excel Upload)")
@@ -1519,7 +1408,6 @@ def main():
             st.info("Enable Dhan above to view and refresh your portfolio.")
 
     elif page == "🧾 Dhan Stocks Analysis":
-        # NEW tab: analyze dhan stocks and provide recommendations
         analyze_dhan_portfolio_recommendations()
 
     elif page == "📈 MF Analysis":
@@ -1532,8 +1420,7 @@ def main():
 
     elif page == "⚙️ Configuration":
         st.markdown("### ⚙️ App Configuration")
-
-        # Only Telegram configuration, in black table-editor style
+        # Telegram configuration
         with st.expander("📨 Telegram P&L Notifications", expanded=False):
             tg_store = localS.getItem("telegram_config") or {}
             if tg_store:
@@ -1570,7 +1457,7 @@ def main():
             st.session_state['telegram_bot_token'] = tg_token
             st.session_state['telegram_chat_id'] = tg_chat
 
-            # Summary dark table for Telegram config (no MF link here now)
+            # Summary dark table for Telegram config
             tg_rows = [
                 {"Field": "Bot Token", "Value": tg_token or "Not set"},
                 {"Field": "Chat ID", "Value": tg_chat or "Not set"},
