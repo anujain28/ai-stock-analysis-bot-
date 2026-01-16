@@ -1,6 +1,11 @@
 # Complete Stock Analysis Bot - GROWW + DHAN + CONFIG PAGES MODIFIED
 # All other logic preserved
+# app.py (imports section)
+import os
+import glob
+from pathlib import Path
 
+import streamlit as st
 import subprocess, sys
 
 def ensure_package(pkg_name: str):
